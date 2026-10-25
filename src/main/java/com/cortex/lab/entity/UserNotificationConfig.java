@@ -17,6 +17,7 @@ public class UserNotificationConfig {
     private Boolean reviewReminder;
     private Boolean reportWeekly;
     private Boolean reportMonthly;
+    private Boolean aiActiveMode;  // AI 导师主动模式（默认开启）
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime gmtCreate;
     @TableField(fill = FieldFill.INSERT_UPDATE)

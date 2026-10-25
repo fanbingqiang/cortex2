@@ -4,15 +4,13 @@ import com.alibaba.fastjson2.JSON;
 import com.cortex.lab.dto.KnowledgeNodeDTO;
 import com.cortex.lab.dto.ProjectInfoDTO;
 import com.cortex.lab.dto.ScenarioDto;
-import com.cortex.config.LlmConfigResolver;
-import com.cortex.lab.entity.AssistantConfig;
 import com.cortex.lab.entity.LabScenario;
+import com.cortex.lab.entity.AssistantConfig;
 import com.cortex.lab.entity.QuestionBank;
 import com.cortex.lab.mapper.AssistantConfigMapper;
 import com.cortex.lab.mapper.LabScenarioMapper;
 import com.cortex.lab.mapper.QuestionBankMapper;
-import com.cortex.llm.LlmClient;
-import com.cortex.llm.LlmRequest;
+import com.cortex.lab.service.PythonAIService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -29,9 +27,8 @@ import java.util.concurrent.Executors;
 public class KnowledgeTreeService {
 
     private final LabScenarioMapper scenarioMapper;
-    private final LlmClient llmClient;
+    private final PythonAIService pythonAIService;
     private final AssistantConfigMapper configMapper;
-    private final LlmConfigResolver llmConfigResolver;
     private final SpringProjectService springProjectService;
     private final QuestionBankMapper questionBankMapper;
     private final KnowledgeCardService knowledgeCardService;
@@ -47,297 +44,234 @@ public class KnowledgeTreeService {
     public List<KnowledgeNodeDTO> getTree() {
         List<KnowledgeNodeDTO> tree = new ArrayList<>();
 
-        // ==================== 1. Java基础 ====================
-        tree.add(new KnowledgeNodeDTO("java-basics", "Java基础", "Java核心语法与基础概念", List.of(
-            node("java-basics-datatype", "数据类型与包装类", "基本类型、自动装箱/拆箱、Integer缓存池"),
-            node("java-basics-string", "String与常量池", "不可变性、常量池、intern()、new String vs 字面量"),
-            node("java-basics-passing", "值传递与引用传递", "Java只有值传递，对象引用在栈上的行为"),
-            node("java-basics-equals", "equals与hashCode", "约定、重写规则、HashMap key必须同时重写"),
-            node("java-basics-final", "final关键字", "修饰类/方法/变量/引用的语义和限制"),
-            node("java-basics-static", "static关键字", "静态变量/方法/代码块执行顺序、静态导入"),
-            node("java-basics-inner-class", "内部类", "成员/静态/匿名/局部内部类、编译后字节码"),
-            node("java-basics-interface", "接口与抽象类", "区别、default/static方法、函数式接口@FunctionalInterface"),
-            node("java-basics-generics", "泛型与类型擦除", "擦除机制、通配符 extends/super、桥接方法"),
-            node("java-basics-reflection", "反射机制", "Class对象、Method/Field/Constructor、setAccessible、性能"),
-            node("java-basics-annotation", "注解原理", "元注解、@Retention/@Target、APT、运行时/源码注解"),
-            node("java-basics-lambda", "Lambda与函数式接口", "invokedynamic、方法引用::、变量捕获effectively final"),
-            node("java-basics-stream", "Stream API", "惰性求值、中间操作/终结操作、并行流、Collectors"),
-            node("java-basics-optional", "Optional使用", "正确使用姿势、orElse vs orElseGet、避免isPresent-get"),
-            node("java-basics-serial", "序列化机制", "Serializable/serialVersionUID、transient、序列化破坏单例"),
-            node("java-basics-io", "IO流体系", "字节流/字符流、装饰器模式在IO中的应用、缓冲流"),
-            node("java-basics-enum", "枚举最佳实践", "枚举实现单例、枚举中定义方法、EnumMap/EnumSet"),
-            node("java-basics-bigdecimal", "BigDecimal与浮点数", "double精度丢失、BigDecimal构造方式、舍入模式"),
-            node("java-basics-datetime", "日期时间API", "Date vs LocalDateTime、SimpleDateFormat线程不安全、时区"),
-            node("java-basics-copy", "深拷贝与浅拷贝", "clone()、拷贝构造器、序列化深拷贝、Apache BeanUtils")
+        // ==================== 1. Redis篇 ====================
+        tree.add(new KnowledgeNodeDTO("redis", "Redis篇", "Redis核心面试知识点", List.of(
+            new KnowledgeNodeDTO("redis-cache", "Redis使用场景-缓存", "缓存相关问题及解决方案", List.of(
+                conceptNode("redis-cache-penetration", "缓存穿透", "缓存穿透的原因及解决方案"),
+                conceptNode("redis-cache-breakdown", "缓存击穿", "缓存击穿的原因及解决方案"),
+                conceptNode("redis-cache-avalanche", "缓存雪崩", "缓存雪崩的原因及解决方案"),
+                conceptNode("redis-cache-consistency", "双写一致性", "缓存与数据库双写一致性问题"),
+                conceptNode("redis-consistency-strong", "强一致方案：Redisson读写锁", "基于Redisson的强一致性实现"),
+                conceptNode("redis-consistency-eventual", "最终一致方案：MQ通知删缓存、Canal监听binlog更新缓存", "基于事件通知的最终一致性方案"),
+                conceptNode("redis-consistency-delay", "延迟双删（缺点：无法保证强一致）", "延迟双删策略及其局限性")
+            ), false, null),
+            conceptNode("redis-persistence", "Redis持久化", "RDB快照与AOF日志持久化机制"),
+            conceptNode("redis-expire", "Redis数据过期策略", "过期键的删除策略"),
+            conceptNode("redis-eviction", "Redis数据淘汰策略", "内存淘汰算法"),
+            new KnowledgeNodeDTO("redis-lock", "Redis分布式锁", "分布式锁的实现与应用", List.of(
+                conceptNode("redis-lock-scenario", "使用场景", "分布式锁的典型应用场景"),
+                conceptNode("redis-lock-principle", "实现原理（setnx、Redisson）", "基于setnx和Redisson的实现方式")
+            ), false, null),
+            new KnowledgeNodeDTO("redis-cluster", "Redis集群相关", "Redis集群架构与运维", List.of(
+                conceptNode("redis-cluster-replication", "主从复制、主从同步", "主从复制原理及数据同步机制"),
+                conceptNode("redis-cluster-sentinel", "哨兵模式、集群脑裂", "哨兵模式原理及脑裂问题处理"),
+                conceptNode("redis-cluster-sharding", "分片集群、数据读写", "分片集群的数据分布与访问策略")
+            ), false, null),
+            new KnowledgeNodeDTO("redis-extra", "Redis补充拓展", "Redis进阶知识点", List.of(
+                conceptNode("redis-extra-fast", "Redis是单线程为什么速度快", "单线程模型的优势及高效原因"),
+                conceptNode("redis-extra-structure", "Redis常用数据结构", "String、Hash、List等数据结构特性")
+            ), false, null),
+            new KnowledgeNodeDTO("redis-other", "其他", "Redis其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 2. 面向对象 ====================
-        tree.add(new KnowledgeNodeDTO("oop", "面向对象", "OOP三大特性与SOLID设计原则", List.of(
-            node("oop-encapsulation", "封装", "访问控制修饰符、getter/setter、数据隐藏"),
-            node("oop-extends", "继承", "super调用、继承链方法查找、菱形问题"),
-            node("oop-polymorphism", "多态与重载", "运行时多态、编译时多态、重写与重载的区别"),
-            node("oop-abstraction", "抽象", "抽象类 vs 接口、面向接口编程"),
-            node("oop-composition", "组合优于继承", "组合与委托、装饰器模式对比继承"),
-            node("oop-singleton", "单例模式", "饿汉/懒汉/DCL/静态内部类/枚举，反序列化破坏"),
-            node("oop-proxy", "代理模式", "静态代理、JDK动态代理（必须接口）、CGLIB继承代理"),
-            node("oop-solid-single", "单一职责原则", "类/方法只负责一个职责，判断标准和拆分时机"),
-            conceptNode("oop-solid-open", "开闭原则", "对扩展开放、对修改关闭，模板方法+策略实现"),
-            conceptNode("oop-solid-liskov", "里氏替换原则", "子类不能削弱父类前置条件、不能增强后置条件"),
-            conceptNode("oop-solid-interface-seg", "接口隔离原则", "大接口拆小接口、避免fat interface"),
-            conceptNode("oop-solid-di", "依赖反转原则", "依赖抽象而非具体、IoC容器与依赖注入")
+        // ==================== 2. MySQL数据库篇 ====================
+        tree.add(new KnowledgeNodeDTO("mysql", "MySQL数据库篇", "MySQL核心面试知识点", List.of(
+            new KnowledgeNodeDTO("mysql-optimization", "SQL优化", "SQL性能优化全流程", List.of(
+                conceptNode("mysql-slow-query", "定位慢查询", "慢查询日志开启与分析"),
+                conceptNode("mysql-slow-analysis", "SQL执行缓慢分析方式", "Explain执行计划解读"),
+                conceptNode("mysql-index-structure", "索引概念&底层数据结构", "B+树索引结构与原理"),
+                conceptNode("mysql-index-clustered", "聚簇索引 & 非聚簇索引、回表查询", "聚簇与非聚簇索引的区别"),
+                conceptNode("mysql-index-covering", "覆盖索引、超大分页优化", "覆盖索引避免回表与分页优化"),
+                conceptNode("mysql-index-principle", "索引创建原则", "索引创建的最佳实践"),
+                conceptNode("mysql-index-failure", "索引失效场景", "索引失效的常见原因"),
+                conceptNode("mysql-sql-practice", "SQL优化实战经验", "SQL优化实践总结")
+            ), false, null),
+            new KnowledgeNodeDTO("mysql-transaction", "事务相关", "MySQL事务机制", List.of(
+                conceptNode("mysql-acid", "事务四大特性ACID", "原子性、一致性、隔离性、持久性"),
+                conceptNode("mysql-isolation", "并发事务问题、事务隔离级别", "脏读、不可重复读、幻读与隔离级别"),
+                conceptNode("mysql-log", "redo log与undo log区别", "重做日志与回滚日志的作用"),
+                conceptNode("mysql-mvcc", "MVCC原理", "多版本并发控制实现原理")
+            ), false, null),
+            new KnowledgeNodeDTO("mysql-architecture", "MySQL架构拓展", "MySQL高可用与扩展", List.of(
+                conceptNode("mysql-replication", "主从同步原理", "binlog复制与主从同步机制"),
+                conceptNode("mysql-sharding", "分库分表", "垂直拆分与水平拆分策略")
+            ), false, null),
+            new KnowledgeNodeDTO("mysql-other", "其他", "MySQL其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 3. 异常处理 ====================
-        tree.add(new KnowledgeNodeDTO("exception", "异常处理", "Java异常机制与最佳实践", List.of(
-            node("exception-hierarchy", "异常继承体系", "Throwable、Error、Exception、RuntimeException层次"),
-            node("exception-checked", "受检与非受检异常", "checked/unchecked设计哲学、何时用哪种"),
-            node("exception-try-finally", "try-catch-finally", "finally执行时机、return与finally的先后"),
-            node("exception-try-with-resources", "try-with-resources", "AutoCloseable接口、资源关闭顺序"),
-            node("exception-suppressed", "Suppressed抑制异常", "try-with-resources中多个异常的处理"),
-            node("exception-custom", "自定义异常", "继承RuntimeException vs Exception、异常链"),
-            node("exception-performance", "异常性能开销", "异常创建的成本、栈帧填充、flow control反模式"),
-            node("exception-best-practice", "异常最佳实践", "不要吞异常、精准异常类型、记录上下文")
+        // ==================== 3. Spring框架篇 ====================
+        tree.add(new KnowledgeNodeDTO("spring", "Spring框架篇", "Spring框架核心面试知识点", List.of(
+            new KnowledgeNodeDTO("spring-core", "Spring核心", "Spring IoC与AOP核心原理", List.of(
+                conceptNode("spring-bean-thread-safe", "单例Bean是否线程安全", "单例Bean的线程安全性分析"),
+                conceptNode("spring-aop", "AOP原理与面试题", "AOP底层实现与常见面试题"),
+                conceptNode("spring-tx-failure", "Spring事务失效场景", "事务失效的常见原因与解决"),
+                conceptNode("spring-bean-lifecycle", "Bean生命周期", "Bean从创建到销毁的完整流程"),
+                conceptNode("spring-circular-dependency", "Bean循环依赖（循环引用）", "三级缓存解决循环依赖")
+            ), false, null),
+            new KnowledgeNodeDTO("spring-mvc", "SpringMVC", "SpringMVC请求处理流程", List.of(
+                conceptNode("spring-mvc-flow", "SpringMVC执行流程", "DispatcherServlet请求处理流程")
+            ), false, null),
+            new KnowledgeNodeDTO("spring-boot", "SpringBoot", "SpringBoot自动配置原理", List.of(
+                conceptNode("spring-boot-autoconfig", "自动配置原理", "@EnableAutoConfiguration实现原理")
+            ), false, null),
+            new KnowledgeNodeDTO("mybatis", "MyBatis", "MyBatis执行流程与缓存", List.of(
+                conceptNode("mybatis-flow", "MyBatis执行流程", "MyBatis从代理到SQL执行的完整流程"),
+                conceptNode("mybatis-lazy", "延迟加载原理与使用", "MyBatis懒加载实现机制"),
+                conceptNode("mybatis-cache", "一级缓存、二级缓存", "SqlSession级别与Mapper级别缓存")
+            ), false, null),
+            new KnowledgeNodeDTO("spring-other", "其他", "Spring相关其他知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 4. 集合框架 ====================
-        tree.add(new KnowledgeNodeDTO("collection", "集合框架", "List/Set/Map及并发集合", List.of(
-            node("collection-arraylist", "ArrayList与LinkedList", "底层数组/链表、扩容机制、增删改查性能"),
-            node("collection-hashmap", "HashMap原理", "put/get流程、hash扰动、扩容树化、1.7 vs 1.8"),
-            node("collection-concurrent-hashmap", "ConcurrentHashMap", "CAS+synchronized分段、size()、弱一致性迭代"),
-            node("collection-treemap", "TreeMap与Comparable", "红黑树结构、自然/定制排序、Comparator"),
-            node("collection-queue", "Queue与Deque", "BlockingQueue、PriorityQueue、Deque双端"),
-            node("collection-hashset", "HashSet与LinkedHashSet", "底层HashMap、插入顺序与访问顺序"),
-            node("collection-treeset", "TreeSet", "底层TreeMap、排序一致性和equals关系"),
-            node("collection-failfast", "fail-fast机制", "modCount并发修改检测、CopyOnWriteArrayList"),
-            node("collection-collections", "Collections工具类", "unmodifiable/synchronized/checked/empty系、sort/binarySearch"),
-            node("collection-arrays", "Arrays工具类", "asList陷阱、deepEquals、parallelSort、stream转换"),
-            node("collection-sublist", "subList视图陷阱", "SubList是视图而非快照、结构性修改ConcurrentModification"),
-            node("collection-aslist", "Arrays.asList陷阱", "返回固定大小列表、不能add/remove、基本类型数组问题"),
-            node("collection-iterable", "Iterable与Iterator", "增强for循环语法糖、remove方法、ListIterator"),
-            node("collection-enum-map", "EnumMap与EnumSet", "枚举专用集合的性能优势、位向量实现")
+        // ==================== 4. 微服务篇（SpringCloud） ====================
+        tree.add(new KnowledgeNodeDTO("microservice", "微服务篇（SpringCloud）", "微服务架构核心面试知识点", List.of(
+            new KnowledgeNodeDTO("microservice-basic", "基础组件", "注册中心与负载均衡", List.of(
+                conceptNode("microservice-registry", "注册中心", "Nacos/Eureka服务注册与发现"),
+                conceptNode("microservice-ribbon", "Ribbon负载均衡", "客户端负载均衡策略")
+            ), false, null),
+            new KnowledgeNodeDTO("microservice-ha", "高可用防护", "服务雪崩与熔断降级", List.of(
+                conceptNode("microservice-circuit-breaker", "服务雪崩、熔断、降级", "Sentinel熔断降级机制")
+            ), false, null),
+            new KnowledgeNodeDTO("microservice-solution", "业务解决方案", "分布式事务与限流方案", List.of(
+                conceptNode("microservice-rate-limit", "微服务限流（漏桶、令牌桶算法）", "漏桶与令牌桶限流算法"),
+                conceptNode("microservice-cap", "CAP理论与BASE理论", "分布式系统CAP取舍与BASE"),
+                conceptNode("microservice-distributed-tx", "分布式事务解决方案", "Seata、TCC、可靠消息最终一致性"),
+                conceptNode("microservice-idempotent", "分布式接口幂等性实现", "Token机制、去重表等幂等方案"),
+                conceptNode("microservice-distributed-lock", "分布式锁（跨服务场景）", "Redisson分布式锁跨服务使用")
+            ), false, null),
+            new KnowledgeNodeDTO("microservice-other", "其他", "微服务其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 5. Java并发编程 ====================
-        tree.add(new KnowledgeNodeDTO("concurrency", "Java并发编程", "多线程、锁、JUC工具类", List.of(
-            node("concurrency-thread", "线程创建与状态", "Thread/Runnable/Callable、6种状态转换"),
-            node("concurrency-synchronized", "synchronized原理", "对象头MarkWord、偏向锁/轻量锁/重量锁升级"),
-            node("concurrency-volatile", "volatile关键字", "可见性、有序性、禁止指令重排、happens-before"),
-            node("concurrency-reentrantlock", "ReentrantLock", "AQS原理、公平/非公平、Condition条件等待"),
-            node("concurrency-readwritelock", "ReentrantReadWriteLock", "读读共享、读写互斥、锁降级"),
-            node("concurrency-stampedlock", "StampedLock", "乐观读、悲观读、写锁、锁转换对比"),
-            node("concurrency-threadpool", "线程池", "核心参数、拒绝策略、ThreadPoolExecutor、线程池大小设置"),
-            node("concurrency-deadlock", "死锁与活锁", "必要条件、jstack排查、预防策略、活锁/饥饿"),
-            node("concurrency-atomic", "Atomic原子类", "CAS原理、ABA问题、AtomicInteger/LongAdder"),
-            node("concurrency-completable-future", "CompletableFuture", "异步编排、thenApply/combine/allOf/exceptionally"),
-            node("concurrency-threadlocal", "ThreadLocal", "线程局部变量、内存泄漏、InheritableThreadLocal"),
-            node("concurrency-forkjoin", "Fork/Join框架", "工作窃取算法、ForkJoinPool、RecursiveTask"),
-            node("concurrency-locksupport", "LockSupport", "park/unpark、与wait/notify对比、许可机制"),
-            node("concurrency-semaphore", "Semaphore同步工具", "Semaphore/CyclicBarrier/CountDownLatch使用场景"),
-            node("concurrency-blockingqueue", "BlockingQueue", "Array/Linked/Synchronous/DelayQueue实现"),
-            node("concurrency-phaser", "Phaser阶段器", "Reusable barrier、动态注册、onAdvance回调"),
-            node("concurrency-false-sharing", "伪共享", "缓存行失效、@Contended注解、padding对齐"),
-            node("concurrency-aqs", "AQS抽象队列同步器", "CLH队列变体、独占/共享模式、tryAcquire模板"),
-            node("concurrency-cpu-cache", "CPU缓存与内存屏障", "MESI协议、写缓冲、storeLoad屏障、JMM实现")
+        // ==================== 5. 消息中间件篇 ====================
+        tree.add(new KnowledgeNodeDTO("mq", "消息中间件篇", "消息中间件核心面试知识点", List.of(
+            new KnowledgeNodeDTO("rabbitmq", "RabbitMQ", "RabbitMQ核心机制", List.of(
+                conceptNode("rabbitmq-reliability", "消息可靠性保障", "生产者确认、消费者确认、持久化机制"),
+                conceptNode("rabbitmq-dlq", "死信队列", "死信交换机与延迟队列实现"),
+                conceptNode("rabbitmq-backlog", "海量消息堆积处理", "消息堆积原因分析与解决方案"),
+                conceptNode("rabbitmq-ha", "RabbitMQ高可用方案", "镜像队列与集群模式")
+            ), false, null),
+            new KnowledgeNodeDTO("kafka", "Kafka", "Kafka核心机制", List.of(
+                conceptNode("kafka-no-loss", "消息不丢失保障方案", "生产者ack、副本机制、消费者offset提交"),
+                conceptNode("kafka-ordering", "消费顺序性保证", "分区内有序与全局有序方案"),
+                conceptNode("kafka-ha", "Kafka高可用机制", "ISR、Leader选举、副本同步"),
+                conceptNode("kafka-cleanup", "磁盘数据清理机制", "日志段删除与压缩策略"),
+                conceptNode("kafka-performance", "高性能设计原理", "顺序写入、零拷贝、页缓存")
+            ), false, null),
+            new KnowledgeNodeDTO("mq-other", "其他", "消息中间件其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 6. JVM ====================
-        tree.add(new KnowledgeNodeDTO("jvm", "JVM", "内存模型、GC、类加载与调优", List.of(
-            node("jvm-memory", "JVM内存区域", "堆/栈/方法区/程序计数器/直接内存、JDK8元空间变化"),
-            node("jvm-gc", "垃圾回收机制", "可达性分析、GC Root、Minor/Major/Full GC、Stop-the-World"),
-            node("jvm-collector", "垃圾收集器", "Serial/Parallel/CMS/G1/ZGC选择与调优"),
-            node("jvm-oom", "OOM分析", "堆溢出/栈溢出/元空间溢出/OOM in Direct Buffer"),
-            node("jvm-classloader", "类加载机制", "双亲委派模型、加载/连接/初始化、打破双亲委派"),
-            node("jvm-tuning", "JVM调优", "常用参数、GC日志分析、G1调优案例"),
-            node("jvm-reference", "四种引用类型", "强/软/弱/虚引用、ReferenceQueue、PhantomReference"),
-            node("jvm-string-intern", "String.intern池", "常量池位置变化、intern()行为、字符串去重"),
-            node("jvm-escape", "逃逸分析", "栈上分配、同步消除、标量替换、-XX:+DoEscapeAnalysis"),
-            node("jvm-off-heap", "堆外内存", "DirectByteBuffer、Unsafe.allocateMemory、Netty池化管理"),
-            node("jvm-jit", "JIT编译优化", "解释执行 vs 编译执行、C1/C2编译器、分层编译"),
-            node("jvm-tool", "JDK诊断工具", "jstack线程栈、jmap堆dump、jstat GC统计、Arthas"),
-            node("jvm-bytecode", "字节码结构", "ClassFile格式、常量池、invokevirtual/invokedynamic"),
-            node("jvm-compressed-oops", "压缩普通对象指针", "CompressedOops、32位指针对齐、>32GB堆关闭"),
-            node("jvm-g1-region", "G1垃圾收集器", "Region划分、RSet、SATB、Mixed GC、Humongous分配")
+        // ==================== 6. Java集合篇 ====================
+        tree.add(new KnowledgeNodeDTO("java-collection", "Java集合篇", "Java集合框架核心面试知识点", List.of(
+            new KnowledgeNodeDTO("collection-list", "List", "List接口实现类", List.of(
+                conceptNode("collection-arraylist", "ArrayList底层原理、源码分析", "数组扩容机制与源码分析"),
+                conceptNode("collection-arraylist-vs-linkedlist", "ArrayList与LinkedList区别", "数组与链表结构对比"),
+                conceptNode("collection-linkedlist", "LinkedList底层结构", "双向链表实现原理")
+            ), false, null),
+            new KnowledgeNodeDTO("collection-datastructure", "数据结构基础", "基础数据结构", List.of(
+                conceptNode("collection-tree-hash", "二叉树、红黑树、散列表", "TreeMap与HashMap底层数据结构")
+            ), false, null),
+            new KnowledgeNodeDTO("collection-map", "Map", "Map接口实现类", List.of(
+                conceptNode("collection-hashmap", "HashMap原理", "哈希表结构与扩容机制"),
+                conceptNode("collection-hashmap-put", "put执行流程", "HashMap插入元素的完整流程"),
+                conceptNode("collection-hashmap-addressing", "寻址算法、数组容量设计", "hash扰动与2的幂次容量设计"),
+                conceptNode("collection-hashmap-jdk7", "JDK1.7 HashMap多线程死循环问题", "头插法导致的环形链表问题"),
+                conceptNode("collection-concurrenthashmap", "ConcurrentHashMap并发原理", "CAS+synchronized分段锁机制")
+            ), false, null),
+            new KnowledgeNodeDTO("collection-other", "其他", "Java集合其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 7. Spring框架 ====================
-        tree.add(new KnowledgeNodeDTO("spring", "Spring框架", "IoC/AOP/MVC/Boot/Cloud", List.of(
-            projectNode("spring-ioc", "IoC容器", "Bean生命周期、DI注入方式 — Spring Boot Maven 项目"),
-            projectNode("spring-aop", "AOP原理", "JDK/CGLIB、@Aspect — Spring Boot AOP 项目"),
-            projectNode("spring-mvc", "Spring MVC流程", "DispatcherServlet、HandlerMapping — Spring Boot Web 项目"),
-            projectNode("spring-security", "Spring Security", "认证授权流程、JWT整合 — Spring Security 项目"),
-            projectNode("spring-jpa", "Spring Data JPA", "实体映射、关联查询、N+1问题 — Spring JPA 项目"),
-            projectNode("spring-mybatis-plus", "MyBatis-Plus", "自动映射、Wrapper、分页插件 — MyBatis-Plus 项目"),
-            projectNode("spring-cache-redis", "Spring Cache + Redis", "缓存注解、Redis分布式锁 — Cache Redis 项目"),
-            projectNode("spring-websocket", "WebSocket", "实时通信、Stomp协议、广播 — WebSocket 项目"),
-            projectNode("spring-rabbitmq", "RabbitMQ集成", "消息确认、死信队列、延迟队列 — RabbitMQ 项目"),
-            node("spring-transaction", "事务管理", "@Transactional传播行为、隔离级别、失效场景"),
-            node("spring-boot", "Spring Boot核心", "自动配置原理、@EnableAutoConfiguration、Starter"),
-            node("spring-event", "Spring事件机制", "ApplicationEvent、@EventListener、异步事件"),
-            node("spring-async", "@Async异步", "@EnableAsync、ThreadPoolTaskExecutor配置、CompletableFuture返回"),
-            node("spring-trap-transaction", "事务失效场景", "@Transactional私有方法/自调用/异常被捕获/传播属性"),
-            node("spring-trap-circular", "循环依赖", "构造器注入循环依赖、三级缓存、@Lazy"),
-            node("spring-trap-aop", "AOP失效场景", "自调用失效、private/protected不代理、final方法"),
-            node("spring-trap-scope", "Bean作用域陷阱", "Singleton注入Prototype失效、@Scope和代理模式"),
-            node("spring-interceptor", "拦截器与过滤器", "Filter vs HandlerInterceptor、@ControllerAdvice")
+        // ==================== 7. 并发编程篇 ====================
+        tree.add(new KnowledgeNodeDTO("concurrency", "并发编程篇", "Java并发编程核心面试知识点", List.of(
+            new KnowledgeNodeDTO("concurrency-thread-basic", "线程基础", "线程基础概念", List.of(
+                conceptNode("concurrency-process-vs-thread", "进程与线程区别", "进程与线程的定义与区别"),
+                conceptNode("concurrency-concurrent-vs-parallel", "并发与并行区别", "并发与并行的概念区别"),
+                conceptNode("concurrency-thread-create", "线程创建方式", "Thread、Runnable、Callable创建线程"),
+                conceptNode("concurrency-thread-state", "线程状态", "6种线程状态及状态转换"),
+                conceptNode("concurrency-thread-join-wait", "join顺序执行、wait与sleep区别", "join实现顺序执行与wait/sleep对比"),
+                conceptNode("concurrency-thread-stop", "如何安全停止线程", "interrupt标志位与安全停止")
+            ), false, null),
+            new KnowledgeNodeDTO("concurrency-thread-safe", "线程安全", "线程安全机制", List.of(
+                conceptNode("concurrency-synchronized", "synchronized关键字原理", "对象头MarkWord与锁升级"),
+                conceptNode("concurrency-jmm", "JMM Java内存模型", "主内存与工作内存、happens-before"),
+                conceptNode("concurrency-cas", "CAS原理", "Compare-And-Swap与ABA问题"),
+                conceptNode("concurrency-volatile", "volatile关键字作用", "可见性与有序性保证"),
+                conceptNode("concurrency-aqs", "AQS原理", "AbstractQueuedSynchronizer实现原理"),
+                conceptNode("concurrency-reentrantlock", "ReentrantLock实现原理", "AQS独占锁实现"),
+                conceptNode("concurrency-sync-vs-lock", "synchronized与Lock对比", "两者功能与性能对比"),
+                conceptNode("concurrency-deadlock", "死锁产生条件与解决方案", "死锁四条件与排查解决"),
+                conceptNode("concurrency-chm", "ConcurrentHashMap", "并发集合的线程安全实现")
+            ), false, null),
+            new KnowledgeNodeDTO("concurrency-threadpool", "线程池", "线程池核心知识", List.of(
+                conceptNode("concurrency-threadpool-params", "核心参数", "corePoolSize、maxPoolSize、keepAliveTime等"),
+                conceptNode("concurrency-threadpool-queue", "常见阻塞队列", "ArrayBlockingQueue、LinkedBlockingQueue等"),
+                conceptNode("concurrency-threadpool-formula", "核心线程数计算公式", "CPU密集型与IO密集型线程数计算"),
+                conceptNode("concurrency-threadpool-types", "线程池种类", "Fixed、Cached、Scheduled、Single等"),
+                conceptNode("concurrency-threadpool-executors", "禁止直接使用Executors创建线程池", "OOM风险与手动创建规范"),
+                conceptNode("concurrency-threadpool-practice", "项目中线程池实战场景", "实际项目中的线程池使用经验")
+            ), false, null),
+            new KnowledgeNodeDTO("concurrency-extra", "拓展", "并发编程拓展", List.of(
+                conceptNode("concurrency-threadlocal", "ThreadLocal原理、内存泄漏问题", "ThreadLocalMap结构与内存泄漏分析")
+            ), false, null),
+            new KnowledgeNodeDTO("concurrency-other", "其他", "并发编程其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 8. 数据库与SQL ====================
-        tree.add(new KnowledgeNodeDTO("database", "数据库与SQL", "MySQL、索引、事务、SQL优化", List.of(
-            node("database-mysql-arch", "MySQL架构", "Server层/存储引擎、SQL执行流程、连接器/分析器/优化器"),
-            node("database-sql-order", "SQL执行顺序", "FROM→ON→JOIN→WHERE→GROUP BY→HAVING→SELECT→ORDER BY→LIMIT"),
-            node("database-index", "索引优化", "B+树结构、聚簇/二级索引、覆盖索引、最左前缀"),
-            node("database-transaction", "事务与隔离级别", "ACID、MVCC、undo log、RC/RR/可串行化"),
-            node("database-lock", "MySQL锁", "行锁/间隙锁/临键锁/意向锁/死锁排查"),
-            node("database-sql-optimize", "SQL优化", "慢查询分析、Explain解读、索引下推、ICP"),
-            node("database-count", "COUNT查询", "count(*) vs count(1) vs count(列)、MyISAM计数缓存"),
-            node("database-join-optimize", "JOIN优化", "Nested Loop Join/Hash Join、驱动表选择、join buffer"),
-            node("database-deep-paging", "深分页优化", "limit offset问题、延迟关联、子查询分页、游标分页"),
-            node("database-normal-form", "数据库三大范式", "1NF/2NF/3NF/BCNF、反范式设计权衡"),
-            node("database-charset", "字符集与乱码", "UTF-8 vs utf8mb4、emoji存储、连接编码配置"),
-            node("database-on-duplicate", "主键冲突处理", "ON DUPLICATE KEY UPDATE、REPLACE INTO、INSERT IGNORE"),
-            node("database-lock-pess-opti", "悲观锁与乐观锁", "select for update、version/CAS实现乐观锁"),
-            node("database-sharding", "分库分表", "垂直/水平拆分、ShardingSphere、全局表/ER表"),
-            node("database-read-write", "主从复制与读写分离", "binlog复制、异步/半同步/全同步、延迟问题"),
-            node("database-migration", "数据库迁移", "Flyway/Liquibase、Online DDL、大表改结构风险")
+        // ==================== 8. JVM虚拟机篇 ====================
+        tree.add(new KnowledgeNodeDTO("jvm", "JVM虚拟机篇", "JVM核心面试知识点", List.of(
+            new KnowledgeNodeDTO("jvm-basic", "JVM基础", "JVM基础概念", List.of(
+                conceptNode("jvm-intro", "JVM介绍、整体运行流程", "JVM整体架构与运行流程"),
+                conceptNode("jvm-memory", "JVM内存区域划分", "堆、栈、方法区、程序计数器等"),
+                conceptNode("jvm-pc", "程序计数器", "PC寄存器的作用与特点"),
+                conceptNode("jvm-stack", "虚拟机栈", "栈帧结构与局部变量表"),
+                conceptNode("jvm-method-area", "方法区", "方法区与元空间的变化"),
+                conceptNode("jvm-direct-memory", "直接内存", "NIO直接内存与堆外内存")
+            ), false, null),
+            new KnowledgeNodeDTO("jvm-classloader", "类加载器", "类加载机制", List.of(
+                conceptNode("jvm-classloader-types", "类加载器分类", "Bootstrap、Extension、Application类加载器"),
+                conceptNode("jvm-classloader-parent", "类加载执行流程、双亲委派模型", "双亲委派模型与打破机制")
+            ), false, null),
+            new KnowledgeNodeDTO("jvm-gc", "垃圾回收GC", "GC机制与算法", List.of(
+                conceptNode("jvm-gc-reachable", "对象判定回收条件", "可达性分析与GC Roots"),
+                conceptNode("jvm-gc-algorithm", "常见GC算法", "标记-清除、标记-复制、标记-整理"),
+                conceptNode("jvm-gc-generational", "分代回收机制", "新生代、老年代、永久代/元空间"),
+                conceptNode("jvm-gc-collectors", "垃圾收集器（G1、ZGC等）", "Serial、Parallel、CMS、G1、ZGC"),
+                conceptNode("jvm-gc-references", "四种引用：强、软、弱、虚引用", "强软弱虚引用与ReferenceQueue")
+            ), false, null),
+            new KnowledgeNodeDTO("jvm-tuning", "JVM调优实战", "JVM调优工具与方法", List.of(
+                conceptNode("jvm-tuning-params", "常用调优参数", "-Xms、-Xmx、-XX:+UseG1GC等"),
+                conceptNode("jvm-tuning-tools", "调优工具", "jstack、jmap、jstat、Arthas等"),
+                conceptNode("jvm-tuning-memory-leak", "内存泄漏排查思路", "dump分析、MAT工具使用"),
+                conceptNode("jvm-tuning-cpu", "CPU飙升线上排查方案", "top、jstack定位CPU飙高线程")
+            ), false, null),
+            new KnowledgeNodeDTO("jvm-other", "其他", "JVM其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 9. MyBatis ====================
-        tree.add(new KnowledgeNodeDTO("mybatis", "MyBatis", "ORM框架、动态SQL、缓存与插件", List.of(
-            node("mybatis-dynamic-sql", "动态SQL", "if/choose/when/foreach/where/set/trim标签"),
-            node("mybatis-sql-injection", "#{}与${}注入", "#{}预编译防注入、${}排序字段拼接场景"),
-            node("mybatis-cache", "MyBatis缓存", "一级缓存SQLSession、二级缓存namespace、自定义缓存"),
-            node("mybatis-plugin", "插件原理", "Interceptor接口、四大对象、PageHelper分页原理"),
-            node("mybatis-result", "结果映射", "ResultType vs ResultMap、association/collection嵌套"),
-            node("mybatis-nested-query", "嵌套查询与N+1", "延迟加载、N+1问题、lazyLoadingEnabled配置"),
-            node("mybatis-generator", "代码生成器", "MyBatis Generator配置、通用Mapper、tk.mybatis")
+        // ==================== 9. 企业场景&设计模式篇 ====================
+        tree.add(new KnowledgeNodeDTO("enterprise", "企业场景&设计模式篇", "企业级开发实战", List.of(
+            new KnowledgeNodeDTO("enterprise-design-pattern", "设计模式", "常用设计模式", List.of(
+                conceptNode("enterprise-factory", "工厂模式（简单工厂、工厂方法、抽象工厂）", "三种工厂模式的区别与应用"),
+                conceptNode("enterprise-strategy", "策略模式", "策略模式消除if-else"),
+                conceptNode("enterprise-chain", "责任链模式", "责任链模式实现请求处理链")
+            ), false, null),
+            new KnowledgeNodeDTO("enterprise-scenario", "业务场景实战", "企业业务场景方案", List.of(
+                conceptNode("enterprise-sso", "单点登录实现方案", "SSO单点登录的技术实现"),
+                conceptNode("enterprise-auth", "登录认证、权限框架设计", "认证授权与RBAC权限模型"),
+                conceptNode("enterprise-rate-limit", "接口防重、限流落地", "接口幂等与限流方案落地")
+            ), false, null),
+            new KnowledgeNodeDTO("enterprise-other", "其他", "企业场景其他相关知识点", List.of(), false, null)
         ), false, null));
 
-        // ==================== 10. 设计模式 ====================
-        tree.add(new KnowledgeNodeDTO("design-pattern", "设计模式", "常用设计模式与应用场景", List.of(
-            node("pattern-factory", "工厂模式", "简单工厂/工厂方法/抽象工厂、Spring BeanFactory"),
-            node("pattern-builder", "建造者模式", "Builder链式调用、Lombok @Builder"),
-            node("pattern-strategy", "策略模式", "策略模式结构、Spring ApplicationContext获取策略"),
-            node("pattern-observer", "观察者模式", "发布-订阅、Spring Event、Guava EventBus"),
-            node("pattern-decorator", "装饰器模式", "增强已有功能、IO流装饰器"),
-            node("pattern-chain", "责任链模式", "FilterChain、Netty Pipeline、Dubbo Filter"),
-            node("pattern-template", "模板方法模式", "抽象类定义骨架、子类实现步骤"),
-            node("pattern-adapter", "适配器模式", "类适配器/对象适配器、Spring HandlerAdapter"),
-            node("pattern-flyweight", "享元模式", "Integer缓存池、String常量池、线程池复用"),
-            node("pattern-facade", "门面模式", "统一接口封装、降级复杂度"),
-            node("pattern-mediator", "中介者模式", "对象间解耦、MVC中的Controller职责"),
-            node("pattern-memento", "备忘录模式", "状态保存与恢复、undo/redo机制")
-        ), false, null));
-
-        // ==================== 11. 网络与IO ====================
-        tree.add(new KnowledgeNodeDTO("net-io", "网络与IO", "TCP/IP、HTTP、Netty", List.of(
-            node("io-bio-nio-aio", "BIO/NIO/AIO", "阻塞/非阻塞/异步、Selector/Channel/ByteBuffer"),
-            node("io-netty", "Netty核心", "Reactor模型、EventLoop、ChannelPipeline"),
-            node("io-zerocopy", "零拷贝", "传统IO vs mmap vs sendfile、FileChannel.transferTo"),
-            conceptNode("net-tcp-handshake", "TCP三次握手与四次挥手", "状态变迁、SYN Flood、半连接/全连接队列"),
-            conceptNode("net-timewait", "TIME_WAIT问题", "2MSL、大量TIME_WAIT导致端口耗尽、SO_REUSEADDR"),
-            conceptNode("net-keepalive", "HTTP持久连接", "Keep-Alive、Connection:close、HTTP/2多路复用"),
-            conceptNode("net-timeout", "连接与读取超时", "connectTimeout/readTimeout、TCP超时参数"),
-            node("net-websocket", "WebSocket", "握手升级、帧协议、与HTTP长轮询对比"),
-            conceptNode("net-tls", "HTTPS/TLS", "SSL/TLS握手、证书链、RSA/ECDHE"),
-            conceptNode("net-dns", "DNS解析", "递归/迭代查询、缓存、DNS劫持")
-        ), false, null));
-
-        // ==================== 12. 分布式系统 ====================
-        tree.add(new KnowledgeNodeDTO("distributed", "分布式系统", "理论、中间件、高可用", List.of(
-            conceptNode("distributed-cap", "CAP与BASE理论", "一致性/可用性/分区容错性权衡、AP vs CP"),
-            node("distributed-redis", "Redis", "数据结构/过期/持久化RDB-AOF/分布式锁Redisson"),
-            node("distributed-mq", "消息队列", "RocketMQ/Kafka架构、顺序消息/事务消息/幂等消费"),
-            node("distributed-transaction", "分布式事务", "2PC/TCC/Seata/可靠消息最终一致性"),
-            node("distributed-discovery", "服务注册与发现", "Nacos/Eureka/ZooKeeper、健康检查、CP/AP权衡"),
-            node("distributed-config", "配置中心", "Nacos Config/Apollo/Spring Cloud Config、动态刷新"),
-            node("distributed-gateway", "API网关", "Spring Cloud Gateway/路由/过滤器/限流"),
-            node("distributed-sentinel", "限流熔断降级", "Sentinel/Hystrix、滑动窗口、漏桶/令牌桶"),
-            node("distributed-tracing", "链路追踪", "SkyWalking/Sleuth+Zipkin、TraceId/SpanId"),
-            node("distributed-es", "ElasticSearch", "倒排索引、分词器、查询DSL、集群分片"),
-            node("distributed-id", "分布式ID", "Snowflake算法变种、Leaf/美团/uid-generator"),
-            conceptNode("distributed-raft", "Raft一致性算法", "Leader选举、日志复制、脑裂防止"),
-            node("distributed-load-balance", "负载均衡", "轮询/加权/最小连接/一致性Hash、Spring Cloud LoadBalancer"),
-            node("distributed-session", "分布式Session", "Session同步/粘滞/Redis统一存储/JWT无状态"),
-            node("distributed-interface-idempotent", "接口幂等", "唯一键防重/状态机/Token/乐观锁")
-        ), false, null));
-
-        // ==================== 13. Linux运维 ====================
-        tree.add(new KnowledgeNodeDTO("linux", "Linux运维", "常用命令、系统排查、Java故障诊断", List.of(
-            commandNode("linux-command", "常用命令", "find/grep/sed/awk/top/vmstat/du/df/lsof"),
-            commandNode("linux-process", "进程管理", "ps/pstree/kill/nohup/systemd、OOM Killer"),
-            commandNode("linux-network", "网络排查", "ping/telnet/curl/tcpdump/ss/netstat/mtr"),
-            commandNode("linux-shell", "Shell脚本", "变量/循环/函数/条件判断、$?/$@/$*"),
-            commandNode("linux-crontab", "定时任务", "crontab语法、日志、systemd timer替代"),
-            commandNode("linux-ulimit", "系统资源限制", "ulimit/文件句柄/进程数、dockerd默认限制"),
-            commandNode("linux-disk", "磁盘与文件系统", "inode、软/硬链接、df/du/iostat"),
-            commandNode("linux-java", "Java问题排查", "CPU飚高定位、内存泄漏排查、jstack分析死锁"),
-            commandNode("linux-performance", "性能分析", "perf/flamegraph/火焰图/BCC/eBPF"),
-            commandNode("linux-security", "安全基础", "SSH/iptables/firewalld/SELinux")
-        ), false, null));
-
-        // ==================== 14. Docker & Kubernetes ====================
-        tree.add(new KnowledgeNodeDTO("container", "Docker & Kubernetes", "容器化与编排", List.of(
-            commandNode("dockerfile", "Dockerfile编写", "多阶段构建、.dockerignore、层缓存优化"),
-            commandNode("docker-compose", "Docker Compose", "服务编排、volumes/network、depends_on"),
-            commandNode("docker-network", "Docker网络", "bridge/host/overlay、端口映射、DNS解析"),
-            commandNode("docker-volume", "数据持久化", "volume/bind mount/tmpfs、存储驱动"),
-            commandNode("k8s-pod", "Pod核心概念", "Pod生命周期、Init Container、健康检查"),
-            commandNode("k8s-deployment", "Deployment与扩缩", "ReplicaSet、滚动更新、回滚、HPA"),
-            commandNode("k8s-service", "Service网络", "ClusterIP/NodePort/LoadBalancer、DNS"),
-            commandNode("k8s-configmap", "ConfigMap与Secret", "环境变量注入、挂载卷、敏感信息加密"),
-            commandNode("k8s-helm", "Helm包管理", "Chart结构、模板渲染、Values覆盖"),
-            commandNode("k8s-monitor", "K8s监控", "cadvisor/metrics-server/Prometheus/Grafana")
-        ), false, null));
-
-        // ==================== 15. Git & 工程化 ====================
-        tree.add(new KnowledgeNodeDTO("tooling", "Git & 工程化", "版本控制、构建工具、CI/CD", List.of(
-            commandNode("git-branch", "分支策略", "Git Flow/GitHub Flow/Trunk Based、PR/MR"),
-            commandNode("git-rebase", "Rebase与Merge", "merge vs rebase vs squash、交互式rebase"),
-            commandNode("git-advanced", "Git进阶", "cherry-pick/stash/reset/revert/reflog"),
-            commandNode("maven-lifecycle", "Maven生命周期", "clean/default/site、phase/plugin/goal"),
-            commandNode("maven-multi-module", "多模块构建", "模块依赖、dependencyManagement、聚合"),
-            commandNode("maven-settings", "Maven配置", "settings.xml/仓库镜像/私服/Nexus"),
-            commandNode("ci-cd", "CI/CD", "Jenkins/GitHub Actions/GitLab CI流水线"),
-            commandNode("code-quality", "代码质量", "CheckStyle/PMD/SpotBugs/SonarQube")
-        ), false, null));
-
-        // ==================== 16. 测试 ====================
-        tree.add(new KnowledgeNodeDTO("testing", "测试", "单元测试、集成测试、性能测试", List.of(
-            conceptNode("test-junit5", "JUnit 5", "生命周期、断言、参数化测试、@Nested"),
-            conceptNode("test-mockito", "Mockito", "Mock/Spy、@InjectMocks、Answer/ArgumentCaptor"),
-            conceptNode("test-spring", "Spring测试", "@SpringBootTest、@WebMvcTest、TestRestTemplate"),
-            conceptNode("test-containers", "Testcontainers", "容器化集成测试、数据库/Redis/MQ容器"),
-            conceptNode("test-performance", "性能测试", "JMeter/Gatling、吞吐量/TP99、压测规划"),
-            conceptNode("test-tdd", "TDD与BDD", "红-绿-重构、Given-When-Then")
-        ), false, null));
-
-        // ==================== 17. 系统设计 ====================
-        tree.add(new KnowledgeNodeDTO("system-design", "系统设计", "架构设计、高并发、方案选型", List.of(
-            conceptNode("design-arch-evolution", "架构演进", "单体→垂直→SOA→微服务→Serverless"),
-            conceptNode("design-flash-sale", "秒杀系统设计", "流量削峰、分层过滤、库存预热、MQ异步"),
-            conceptNode("design-short-url", "短链服务设计", "发号器、Base62/62进制、重定向302"),
-            conceptNode("design-idempotent", "幂等设计", "唯一键/Token/状态机/去重表/TCC防悬挂"),
-            conceptNode("design-rate-limit", "限流算法", "令牌桶/漏桶/计数器/滑动窗口、Guava RateLimiter"),
-            conceptNode("design-sharding", "分库分表方案", "范围/哈希/时间分片、跨分片查询、全局主键"),
-            conceptNode("design-id-gen", "ID生成方案", "UUID/Snowflake/DB自增/Leaf/美团、趋势递增"),
-            conceptNode("design-cap-practice", "CAP实战权衡", "CP vs AP选型、最终一致性实现方案"),
-            conceptNode("design-high-concurrency", "高并发设计", "缓存/异步/池化/无锁/水平扩展"),
-            conceptNode("design-failover", "高可用与容灾", "冗余/故障转移/降级/熔断/多活")
-        ), false, null));
-
-        // ==================== 18. 算法与数据结构 ====================
-        tree.add(new KnowledgeNodeDTO("algorithm", "算法与数据结构", "面试高频算法题", List.of(
-            algoNode("algo-sort", "排序算法", "快排/归并/堆排时间复杂度、稳定性、手写快排"),
-            algoNode("algo-linked-list", "链表操作", "反转/环检测/合并有序链表/K个一组反转"),
-            algoNode("algo-lru", "LRU缓存", "LinkedHashMap实现、双向链表+HashMap"),
-            algoNode("algo-binary-tree", "二叉树", "前/中/后序、层序、最近公共祖先、序列化"),
-            algoNode("algo-topk", "TopK问题", "大顶堆/小顶堆/快排partition/海量数据"),
-            algoNode("algo-bfs-dfs", "BFS与DFS", "邻接表/矩阵、最短路径、拓扑排序"),
-            algoNode("algo-dp", "动态规划", "背包/最长子序列/斐波那契、状态转移方程"),
-            algoNode("algo-two-pointer", "双指针与滑动窗口", "快慢指针、左右指针、窗口伸缩")
-        ), false, null));
-
+        setPaths(tree, "");
         return tree;
+    }
+
+    /** 递归设置所有节点的路径 */
+    private void setPaths(List<KnowledgeNodeDTO> nodes, String parentPath) {
+        for (KnowledgeNodeDTO node : nodes) {
+            String nodePath = parentPath.isEmpty() ? node.getName() : parentPath + " / " + node.getName();
+            node.setPath(nodePath);
+            if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                setPaths(node.getChildren(), nodePath);
+            }
+        }
     }
 
     // ======================== 掌握状态 ========================
@@ -365,7 +299,24 @@ public class KnowledgeTreeService {
                 configMapper.insert(c);
             }
         } catch (Exception e) {
-            log.warn("保存节点掌握状态失败: {}", e.getMessage());
+            log.error("保存节点掌握状态失败: nodeId={}, userId={}", nodeId, userId, e);
+        }
+    }
+
+    /** 获取知识树所有节点ID（扁平化） */
+    public List<String> getAllNodeIds() {
+        List<String> ids = new ArrayList<>();
+        collectAllNodeIds(getTree(), ids);
+        return ids;
+    }
+
+    private void collectAllNodeIds(List<KnowledgeNodeDTO> nodes, List<String> ids) {
+        if (nodes == null) return;
+        for (KnowledgeNodeDTO node : nodes) {
+            ids.add(node.getId());
+            if (node.getChildren() != null) {
+                collectAllNodeIds(node.getChildren(), ids);
+            }
         }
     }
 
@@ -662,15 +613,20 @@ public class KnowledgeTreeService {
     // ======================== 多类型内容生成 ========================
 
     public ScenarioDto generateForNode(String nodeId) {
+        return generateForNode(nodeId, null);
+    }
+
+    public ScenarioDto generateForNode(String nodeId, String userId) {
         List<KnowledgeNodeDTO> tree = getTree();
         KnowledgeNodeDTO found = findNode(tree, nodeId);
-        if (found == null || !found.isLeaf()) {
+        if (found == null) {
             throw new RuntimeException("未找到知识点: " + nodeId);
         }
 
-        ScenarioDto cached = getCachedScenario(nodeId);
+        String cacheKey = buildCacheKey(nodeId, userId, found.getType());
+        ScenarioDto cached = getCachedScenario(cacheKey);
         if (cached != null) {
-            log.debug("命中缓存 nodeId={}", nodeId);
+            log.debug("命中缓存 key={}", cacheKey);
             return cached;
         }
 
@@ -680,13 +636,13 @@ public class KnowledgeTreeService {
 
         // 非陷阱类型 → 使用对应的生成器（不持久化）
         if ("concept".equals(type)) {
-            return generateNonTrapContent("concept", buildConceptPrompt(knowledgePoint, description), nodeId);
+            return generateNonTrapContent("concept", buildConceptPrompt(knowledgePoint, description), nodeId, userId);
         }
         if ("command".equals(type)) {
-            return generateNonTrapContent("command", buildCommandPrompt(knowledgePoint, description), nodeId);
+            return generateNonTrapContent("command", buildCommandPrompt(knowledgePoint, description), nodeId, userId);
         }
         if ("algorithm".equals(type)) {
-            return generateNonTrapContent("algorithm", buildAlgorithmPrompt(knowledgePoint, description), nodeId);
+            return generateNonTrapContent("algorithm", buildAlgorithmPrompt(knowledgePoint, description), nodeId, userId);
         }
 
         // 陷阱代码类型（type == null）→ 原有流程
@@ -726,12 +682,7 @@ public class KnowledgeTreeService {
 
         // Try to generate via LLM (trap code)
         try {
-            Map<String, String> llmConfig = llmConfigResolver.resolve();
-            String result = llmClient.chatSimple(
-                    llmConfig.get("api_key"),
-                    llmConfig.get("base_url"),
-                    llmConfig.get("model"),
-                    null,
+            String result = pythonAIService.chatSimple(
                     buildPrompt(knowledgePoint, description));
             String cleaned = com.cortex.util.JsonUtils.cleanJson(result);
             ScenarioDto dto = JSON.parseObject(cleaned, ScenarioDto.class);
@@ -764,6 +715,16 @@ public class KnowledgeTreeService {
     }
 
     // 非陷阱类型通用生成器：查缓存 → LLM 生成 → 持久化 → 返回
+    private ScenarioDto generateNonTrapContent(String contentType, String prompt, String nodeId, String userId) {
+        String cacheKey = buildCacheKey(nodeId, userId, contentType);
+        ScenarioDto cached = getCachedScenario(cacheKey);
+        if (cached != null) {
+            return cached;
+        }
+        // 复用 3 参数版本的生成逻辑
+        return generateNonTrapContent(contentType, prompt, nodeId);
+    }
+
     private ScenarioDto generateNonTrapContent(String contentType, String prompt, String nodeId) {
         ScenarioDto cached = getCachedScenario(nodeId);
         if (cached != null) {
@@ -796,13 +757,7 @@ public class KnowledgeTreeService {
 
         // 尝试 LLM 生成
         try {
-            Map<String, String> llmConfig = llmConfigResolver.resolve();
-            String result = llmClient.chatSimple(
-                    llmConfig.get("api_key"),
-                    llmConfig.get("base_url"),
-                    llmConfig.get("model"),
-                    null,
-                    prompt);
+            String result = pythonAIService.chatSimple(prompt);
 
             LabScenario entity = new LabScenario();
             entity.setNodeId(nodeId);
@@ -833,48 +788,73 @@ public class KnowledgeTreeService {
     // LLM 不可用时的备用内容
     private String buildFallbackContent(String contentType, String name, String desc) {
         return switch (contentType) {
-            case "concept" -> """
-## 概念
-%s 是 Java 开发中的核心知识点。%s
-
-## 为什么重要
-掌握这个概念对理解 Java 底层机制和写出高质量代码至关重要。
-
-## 代码示例
-```java
-// 请配置 API Key 后 AI 自动生成示例代码
-// 当前为概念说明模式，查看下方说明理解原理
-```
-""".formatted(name, desc != null ? desc : "");
-            case "command" -> """
-## 概述
-%s — %s
-
-## 常用操作
-请先在小C助手的「配置」面板中填写 API Key。
-
-## 学习建议
-1. 在开发环境中实际操作
-2. 结合项目实践加深理解
-3. 查阅官方文档获取完整参考
-""".formatted(name, desc != null ? desc : "");
-            case "algorithm" -> """
-## 问题描述
-%s
-
-## 思路分析
-%s
-
-## 复杂度分析
-请先在小C助手的「配置」面板中填写 API Key。
-
-## 学习建议
-1. 先理解算法思路
-2. 在白板上画出示意图
-3. 在 LeetCode 上找相关题目练习
-""".formatted(name, desc != null ? desc : "");
+            case "concept" -> buildConceptFallback(name, desc);
+            case "command" -> buildCommandFallback(name, desc);
+            case "algorithm" -> buildAlgorithmFallback(name, desc);
             default -> desc != null ? desc : name;
         };
+    }
+
+    private String buildConceptFallback(String name, String desc) {
+        return """
+## 概念讲解
+
+**%s**
+
+%s
+
+## 理解要点
+
+1. 先搞清楚这概念是干什么的
+2. 它解决了什么问题
+3. 使用时要注意什么
+
+## 动手试试
+
+打开编辑器，自己写一段代码来验证你的理解。
+如果有 API Key，可以生成 AI 示例代码做参考。
+""".formatted(name, desc != null ? desc : "这是 Java 开发中的一个重要概念。理解它有助于写出更健壮的代码。");
+    }
+
+    private String buildCommandFallback(String name, String desc) {
+        return """
+## 命令说明
+
+**%s**
+
+%s
+
+## 学习方式
+
+这部分内容偏向实操，建议：
+
+1. 打开终端亲手执行
+2. 注意观察输出结果
+3. 尝试修改参数看效果有什么不同
+
+配置 API Key 后可查看 AI 生成的命令演示。
+""".formatted(name, desc != null ? desc : "这是开发中常用的命令操作。");
+    }
+
+    private String buildAlgorithmFallback(String name, String desc) {
+        return """
+## 算法思路
+
+**%s**
+
+%s
+
+## 分析步骤
+
+1. 理解输入是什么，输出是什么
+2. 想一想暴力解法怎么写
+3. 有没有更优的方式
+
+## LeetCode 建议
+
+在 LeetCode 上搜相关题目练习。
+先自己写，再看题解。
+""".formatted(name, desc != null ? desc : "这是一个经典算法问题。先理解思路再动手写代码。");
     }
 
     private String buildPrompt(String knowledgePoint, String description) {
@@ -1005,34 +985,44 @@ public class KnowledgeTreeService {
         return "Java";
     }
 
-    private ScenarioDto getCachedScenario(String nodeId) {
-        ScenarioDto mem = scenarioCache.get(nodeId);
+    private ScenarioDto getCachedScenario(String cacheKey) {
+        ScenarioDto mem = scenarioCache.get(cacheKey);
         if (mem != null) {
-            // 内存中若为旧 fallback，清除后重新生成（用户可能刚配置了 API Key）
             if (isFallbackScenario(mem)) {
-                log.debug("内存缓存为 fallback，跳过并重新生成 nodeId={}", nodeId);
-                scenarioCache.remove(nodeId);
+                log.debug("内存缓存为 fallback，跳过并重新生成 key={}", cacheKey);
+                scenarioCache.remove(cacheKey);
             } else {
                 return mem;
             }
         }
-        LabScenario db = scenarioMapper.selectOne(
-            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<LabScenario>()
-                .eq(LabScenario::getNodeId, nodeId)
-                .last("LIMIT 1")
-        );
-        if (db != null) {
-            // 清除 DB 中旧 fallback 记录，确保配置 API Key 后能重新生成
-            if (isFallbackScenario(db)) {
-                log.info("清除节点 [{}] 的旧 fallback 缓存，将重新生成", nodeId);
-                scenarioMapper.deleteById(db.getId());
-                return null;
+        // 陷阱类内容查 DB（用户相关的不查 DB，不存在真正的缓存）
+        if (cacheKey.startsWith("trap:")) {
+            String nodeId = cacheKey.substring(5);
+            LabScenario db = scenarioMapper.selectOne(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<LabScenario>()
+                    .eq(LabScenario::getNodeId, nodeId)
+                    .last("LIMIT 1")
+            );
+            if (db != null) {
+                if (isFallbackScenario(db)) {
+                    log.info("清除节点 [{}] 的旧 fallback 缓存，将重新生成", nodeId);
+                    scenarioMapper.deleteById(db.getId());
+                    return null;
+                }
+                ScenarioDto dto = toDto(db);
+                scenarioCache.put(cacheKey, dto);
+                return dto;
             }
-            ScenarioDto dto = toDto(db);
-            scenarioCache.put(nodeId, dto);
-            return dto;
         }
         return null;
+    }
+
+    /** 缓存 key：陷阱类内容用 trap:nodeId，用户相关用 user:userId:nodeId */
+    private String buildCacheKey(String nodeId, String userId, String type) {
+        if ("concept".equals(type) || "command".equals(type) || "algorithm".equals(type)) {
+            return "user:" + (userId != null ? userId : "anonymous") + ":" + nodeId;
+        }
+        return "trap:" + nodeId;
     }
 
     /** 判断是否为无 API Key 时的 fallback 内容 */
@@ -1052,12 +1042,16 @@ public class KnowledgeTreeService {
             scenarioMapper.updateById(entity);
         }
         ScenarioDto dto = toDto(entity);
-        scenarioCache.put(nodeId, dto);
+        scenarioCache.put("trap:" + nodeId, dto);
         return dto;
     }
 
     private void cacheScenario(String nodeId, LabScenario entity) {
-        scenarioCache.put(nodeId, toDto(entity));
+        scenarioCache.put("trap:" + nodeId, toDto(entity));
+    }
+
+    private void cacheScenario(String cacheKey, ScenarioDto dto) {
+        scenarioCache.put(cacheKey, dto);
     }
 
     private void syncToQuestionBankAndGenerateCard(LabScenario scenario) {

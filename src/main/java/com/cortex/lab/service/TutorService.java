@@ -9,7 +9,7 @@ import com.cortex.lab.entity.QuestionProgress;
 import com.cortex.lab.mapper.QuestionBankMapper;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.cortex.lab.mapper.QuestionProgressMapper;
-import com.cortex.llm.LlmClient;
+import com.cortex.lab.service.PythonAIService;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 public class TutorService {
     // 导师点评服务：答对后推送拓展知识点，答错后给引导例子
 
-    private final LlmClient llmClient;
+    private final PythonAIService pythonAIService;
     private final QuestionBankMapper questionBankMapper;
     private final QuestionProgressMapper progressMapper;
 
@@ -78,7 +78,7 @@ public class TutorService {
         String userMsg = correct ? "用户：我答对了" : "用户：我没答对";
 
         try {
-            String result = llmClient.chatSimple(prompt, userMsg);
+            String result = pythonAIService.chatSimple(prompt, userMsg);
             JSONObject json = JSON.parseObject(com.cortex.util.JsonUtils.cleanJson(result));
             resp.setFeedback(json.getString("feedback"));
             if (json.containsKey("examples")) {
@@ -138,7 +138,7 @@ public class TutorService {
         String prompt = EXPLAIN_PROMPT.formatted(questionTitle, tip);
 
         try {
-            String result = llmClient.chatSimple(prompt, "请解释这个知识点");
+            String result = pythonAIService.chatSimple(prompt, "请解释这个知识点");
             resp.setExplanation(result);
         } catch (Exception e) {
             log.error("解释知识点失败: {}", e.getMessage());

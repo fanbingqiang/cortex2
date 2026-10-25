@@ -1,0 +1,614 @@
+================================================================================
+  Cortex2 - Java后端面试学习平台 工作日志
+  从零构建完整项目的每一步记录
+================================================================================
+
+项目地址: http://localhost:8081/lab/
+开发环境: Windows 10/11, JDK 17, MySQL 8.0, Python 3.11, Node.js 20, Maven 3
+
+================================================================================
+一、项目架构概述
+================================================================================
+
+Cortex2 是一个专注于 Java 后端面试的交互式学习平台，包含三大核心模块：
+
+  ┌─────────────────────────────────────────────────────┐
+  │            Vue3 前端 (localhost:5173)                │
+  │  知识树练习 | 题库刷题 | AI 助手 | 个人中心 | 后台管理  │
+  └────────────────────┬────────────────────────────────┘
+                       │ HTTP API
+  ┌────────────────────▼────────────────────────────────┐
+  │         Java Spring Boot 后端 (localhost:8081)       │
+  │  API 网关 | JWT 认证 | 数据库 CURD | 业务逻辑        │
+  └────────┬───────────────────────────┬────────────────┘
+           │ MySQL (localhost:3306)     │ HTTP
+  ┌────────▼──────────┐  ┌─────────────▼───────────────┐
+  │  MySQL 8.0 数据库  │  │  Python AI 服务 (8001)      │
+  │  cortex2 库        │  │  FastAPI + DeepSeek LLM     │
+  └───────────────────┘  └─────────────────────────────┘
+
+  - Java 后端负责：认证、数据库、所有业务 API
+  - Python 后端负责：LLM 调用、流式输出、Key 池管理、上下文压缩
+  - Java 通过 HTTP 调用 Python，Python 调用 DeepSeek API
+
+================================================================================
+二、分阶段工作记录
+================================================================================
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 1: 项目初始化与架构搭建
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1.1 创建 Spring Boot 项目
+  - 使用 Spring Boot 3.2.5 + JDK 17
+  - 依赖：Spring Web, MyBatis-Plus, MySQL Connector, JWT, Lombok
+  - 配置文件: src/main/resources/application.yml
+    · 端口: 8081
+    · 数据库: jdbc:mysql://localhost:3306/cortex2
+    · 密码: ${MYSQL_PASSWORD:123456}（环境变量，默认 123456）
+
+1.2 创建 Python AI 服务
+  - 目录: ai-assistant-py/agent-engine-service/
+  - 框架: FastAPI + Uvicorn (端口 8001)
+  - 核心文件:
+    · main.py - FastAPI 入口，注册路由
+    · llm_client.py - LLM 客户端，多 Key 池管理，429 自动切换
+    · pipeline.py - 教学流水线，上下文压缩，用户隔离
+    · config.py - 配置管理（API Key, 限流参数）
+    · models.py - 请求/响应模型
+    · trace_store.py - 内存存储（会话、Prompt 模板）
+
+1.3 创建 Vue3 前端
+  - 目录: lab-frontend/
+  - 框架: Vue 3 + TypeScript + Vite 5
+  - 状态管理: Pinia
+  - 路由: Vue Router (Hash 模式)
+  - API 请求: Axios，baseURL = /api/lab
+
+  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+  ┃ 关键架构决策: 为什么 Python 做 AI，Java 做业务？                      ┃
+  ┃ Java 的 HttpClient 调用 LLM 有连接池、超时等问题，Python 生态更好。    ┃
+  ┃ Java 负责认证、数据库、API 路由，Python 只做 LLM 相关的事情。          ┃
+  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 2: 用户系统与认证
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2.1 用户表设计 (user 表)
+  - 字段: user_id, username, password_hash, role, status, skill_level
+  - 弱项/掌握: weak_areas, preferred_direction, learning_goal
+  - 学习统计: total_study_hours, study_streak, last_study_date
+
+2.2 JWT 认证实现
+  - 登录: POST /api/auth/login → 返回 JWT token
+  - 注册: POST /api/auth/register
+  - 过滤器: JwtAuthFilter 拦截所有请求，从 token 提取 userId
+  - 权限控制: /api/lab/assistant/* 和 /api/lab/chat 需要登录
+  - 未登录返回: {"code":401,"message":"请先注册账号后再使用AI助手功能"}
+
+2.3 默认账号
+  ┌──────────┬──────────┬────────┬───────────┐
+  │ 用户名   │ 密码     │ 角色   │ 等级      │
+  ├──────────┼──────────┼────────┼───────────┤
+  │ admin    │ admin123 │ ROOT   │ ADVANCED  │
+  │ senior   │ 123456   │ USER   │ ADVANCED  │
+  │ demo     │ 123456   │ USER   │ BEGINNER  │
+  │ test     │ 123456   │ USER   │ INTERMEDIATE │
+  └──────────┴──────────┴────────┴───────────┘
+
+  密码哈希算法: SHA-256
+
+2.4 匿名用户支持
+  - 未登录用户分配 UUID 存储在 localStorage
+  - 匿名用户可浏览知识树但不能使用 AI 助手
+  - 前端 GlobalChat.vue 对未登录用户显示"请先注册或登录后使用AI助手"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 3: 知识树系统
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3.1 知识树数据结构
+  - 9 大模块: Redis、MySQL、Spring、微服务、消息中间件、Java集合、并发编程、JVM、企业场景&设计模式
+  - 每个模块有多个子节点（如 Redis 下有：Redis分布式锁、Redis集群、缓存穿透/击穿/雪崩 等）
+  - 每个大模块下新增「其他」子节点，用于归类未明确划分的知识点
+
+3.2 关键文件
+  - KnowledgeTreeService.java: getTree() 构建完整知识树
+  - setPaths() 递归设置每个节点的完整路径（如 "Redis篇 / Redis分布式锁 / 其他"）
+  - KnowledgeNodeDTO.java: 节点数据传输对象，包含 path 字段
+
+3.3 前端交互
+  - TreeNode.vue: 递归渲染树节点，点击标签触发 select-node 事件
+  - PracticeView.vue: 接收节点选择，显示面包屑路径，调用 API 生成代码/题目
+  - 「其他」节点可展开/收起，点击标签可生成内容
+
+3.4 知识树示例
+  Redis篇
+  ├── Redis分布式锁
+  │   ├── 实现原理（setnx、Redisson）
+  │   ├── 锁续期与看门狗机制
+  │   └── 红锁算法（Redlock）
+  ├── Redis集群
+  ├── 缓存穿透/击穿/雪崩
+  ├── 数据持久化（RDB/AOF）
+  ├── Redis过期策略与淘汰策略
+  ├── Redis主从复制与哨兵模式
+  ├── Redis补充拓展
+  └── 其他  ← 可展开，可点击生成内容
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 4: 题目系统与知识分类
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4.1 题库表 (lab_question_bank)
+  - 字段: title, description, trap_code, expected_pitfall, correct_explanation
+  - 新增字段: knowledge_path VARCHAR(512) - 知识树路径，如 "Redis篇/Redis分布式锁/其他"
+  - 新增字段: category VARCHAR(128) - 题目分类
+
+4.2 知识卡片表 (lab_knowledge_card)
+  - 新增字段: knowledge_path VARCHAR(512) - 关联知识树路径
+
+4.3 社区陷阱表 (lab_community_trap)
+  - 新增字段: knowledge_path VARCHAR(512) - 关联知识树路径
+
+4.4 题目创建自动分类
+  - LabController.importQuestion: 接受 knowledgePath 参数
+  - QuestionBankService.importQuestion: 保存 knowledgePath 到实体
+  - QuestionBankService.batchImport: 批量导入支持 knowledgePath
+  - CommunityTrapService.submit: 提交陷阱时保存 knowledgePath
+
+4.5 数据清理
+  - 清空 lab_question_bank, lab_knowledge_card, lab_community_trap
+  - 注释掉 3 个 @PostConstruct 自动种子方法:
+    · BuiltinScenarioSeedService.ensureBuiltinData()
+    · CommunityTrapService.seedData()
+    · CommunityTrapService.seedScenarios()
+    · QuestionBankService.seedBuiltinQuestions()
+
+  ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+  ┃ 重要教训: 自动种子会在每次启动时检查数据是否为空，为空则重新插入。    ┃
+  ┃ 所以之前 truncate 后发现数据又回来了，就是因为 @PostConstruct 还在。  ┃
+  ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 5: AI 助手系统
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+5.1 多 Key 池管理
+  - 配置: LLM_API_KEY 支持逗号分隔多个 Key，如 "sk-xxx,sk-yyy"
+  - 策略: 选择当前 RPM 使用最低的 Key
+  - 429 处理: 自动切换到下一个 Key 重试
+  - 队列: 所有 Key 都忙时，请求入队，最大队列长度 200
+
+5.2 上下文压缩
+  - 触发条件: 历史消息超过 10 条
+  - 策略: 保留最近 5 条，压缩较早的 15 条为 LLM 摘要
+  - 实现: pipeline.py 中的 compress_history 方法
+
+5.3 用户隔离
+  - 每个用户独立的历史记录，通过 user_id 隔离
+  - 对话存储在 assistant_conversation 和 assistant_message 表
+  - JWT 提取 user_id，严格校验所有权
+
+5.4 前端改动
+  - GlobalChat.vue: 隐藏「配置」按钮和 ConfigPanel 组件
+  - API Key 预填在服务端，用户无需手动输入
+  - 移除 max_tokens 限制（llm_client.py 中 3 处 max_tokens=4096 删除）
+
+5.5 笔记功能
+  - pipeline.py 修改笔记格式为基础知识点（标题、答案摘要、关键点）
+  - 前端 notebook.ts 添加 updateNote 和 deleteNote 方法
+  - 支持编辑（双击或 ✎ 按钮）和删除（✕ 按钮）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 6: 个人中心
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+6.1 功能设计
+  - 用户画像: 弱项、掌握点、自定义画像（用户可修改）
+  - 学习统计: 学习时长、题目数、正确率、连续学习天数
+  - 学习报告: AI 生成的学习报告（周报/月报）
+
+6.2 API 接口
+  - GET /api/lab/user/profile - 获取用户画像
+  - PUT /api/lab/user/profile - 更新用户画像
+  - POST /api/lab/user/profile/analyze-chat - AI 分析最近对话，自动更新画像
+  - GET /api/lab/report/ai-narrative - AI 生成学习报告
+
+6.3 前端组件
+  - ProfileView.vue: 个人中心页面
+  - 删除个性标签模块，左右列自然对齐
+  - 学习报告生成按钮
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 7: 后台管理系统
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+7.1 访问方式
+  - URL: http://localhost:8081/lab/#/admin
+  - 账号: admin / admin123
+  - 权限: 仅 ROOT 角色可访问，非管理员返回"无权限：仅管理员可访问"
+
+7.2 5 个 Tab
+  ┌────────────────────────────────────────────────┐
+  │ 仪表盘        │ 统计数据 + Key 池监控           │
+  │ Prompt 管理   │ 5 个 Agent 的 Prompt 编辑/保存   │
+  │ 流程追踪      │ 会话列表 + 详情                  │
+  │ 优化建议      │ AI 分析建议                      │
+  │ 用户管理      │ 用户表 + 学习指标                │
+  └────────────────────────────────────────────────┘
+
+  - 实现: Java 通过 endpoint 代理到 Python 8001 端口
+  - 角色控制: LabController 中检查用户 role == "ROOT"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 8: 代码清理与 UI 优化
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+8.1 旧代码清理
+  - 删除 19 个 Java 文件和 4 个空目录（旧 Agent 引擎、控制器、DTO、实体等）
+  - 删除 7 个 Java 文件（LlmClient.java, LlmRequest.java, LlmResponse.java 等）
+  - 创建 3 个新 Java 文件（PythonAIService.java, ToolDefinition.java, ToolFunction.java）
+  - 所有 AI 调用统一走 Python 8001 端口
+
+8.2 UI 优化
+  - 题目和代码 Tab 交换：默认显示"题目"Tab
+  - 面包屑显示知识树路径（如 "Redis篇 / Redis分布式锁 / 其他"）
+  - 知识树「其他」节点改为可展开 + 可点击
+  - 隐藏 AI 助手配置按钮和 API Key 输入框
+
+8.3 配置文件修复
+  - application.yml: MYSQL_PASSWORD 添加默认值 123456
+  - 解决因环境变量缺失导致 Java 连不上数据库的问题
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 9: 功能改造与 Docker 一键启动
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+9.1 题库功能删除
+  - 顶部导航移除「题库」入口，路由 /questions 删除
+  - PracticeView.vue / useAiWebSocket.ts 中跳转题库的代码改为跳转社区/卡片
+  - 题库空数据（无来源），改为从 AI 出题 + 社区去实战获得练习内容
+
+9.2 社区陷阱改造（简化提交 + 去实战）
+  - 提交表单简化：用户只需填「问题标题 + 所属知识点 + 问题描述」，代码可选
+  - 后端 /community/submit 去掉 trapCode 必填校验，问题描述必填
+  - 审核通过的问题详情页新增「▶ 去实战练习」按钮
+    · 跳转 /practice 并通过 load-code 事件把问题/代码加载到编辑器
+  - 普通用户页面移除审核按钮（审核统一移到后台管理）
+
+9.3 后台管理新增「社区审核」Tab
+  - 管理员可查看所有社区提交（标题/知识点/提交者/问题描述/代码）
+  - 一键通过 / 拒绝 / 删除，状态实时刷新
+
+9.4 知识卡片全面改造
+  - 展示形式：题目 + 点击展开显示简易答案（用于答题后回忆）
+  - 新增「AI 提问生成卡片」：输入问题 → 后端调 Python 简易回答 → 生成卡片
+    · Java 新增 POST /api/lab/cards/generate，Python 复用 /api/chat/simple
+    · AI 用大白话 2~3 句话讲清核心（如"什么是缓存击穿？"）
+  - 新增「手动添加卡片」：用户自填题目 + 简易答案 + 知识路径
+  - Java 新增 POST /api/lab/cards（用户自建，question_id=0）
+  - 支持删除卡片
+
+9.5 关键 Bug 修复：Java HttpClient 请求体丢失（HTTP/2 升级）
+  - 现象: Java 调 Python /api/chat/simple 时，Python 收到 Content-Length 存在但 body 为 0
+  - 根因: Java 17 HttpClient 默认发送 `Connection: Upgrade, HTTP2-Settings` + `Upgrade: h2c`
+         尝试 HTTP/2 升级，uvicorn/httptools 对该请求丢弃 body
+  - 修复: PythonAIService.java 强制 HTTP/1.1（.version(HTTP_1_1)）+ 绕过系统代理直连
+  - 影响: 修复后 AI 知识卡片生成等所有 Java→Python 的 POST 调用恢复正常
+
+9.6 其他修复
+  - Python uvicorn 禁用 reload（reload 会导致请求期间 worker 重启、偶发 500）
+  - 知识卡片 AI 生成提示词使用「题目+简易答案」JSON 格式，足够简易
+
+9.7 Docker 一键启动
+  - start.bat 改为 Docker 一键启动脚本：
+    · 检查 .env / Docker / JAR → docker compose build → docker compose up -d
+  - stop.bat 改为 docker compose down
+  - docker-compose.yml 三服务：mysql(3307) + python-ai(8001) + cortex-app(8081)
+  - 前端构建产物已包含在 Java JAR 的 static/lab 中，无需单独容器
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 10: Python 多 Worker + Redis 共享存储
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+10.1 Redis 服务接入
+  - docker-compose 新增 redis 服务（redis:7-alpine，端口 6379，数据卷 redis-data）
+  - python-ai 注入 REDIS_URL=redis://redis:6379，depends_on redis 健康检查
+  - Docker 编排从 3 服务变为 4 服务：mysql + redis + python-ai + cortex-app
+
+10.2 多 Worker 利用多核
+  - Python Dockerfile 启动命令改为 uvicorn --workers 2（2 进程并行）
+  - config.py 新增 workers 配置，本地可用 WORKERS=2 python main.py
+
+10.3 状态迁移 Redis（关键：多 worker 状态一致）
+  - 新增 redis_store.py：会话/画像/提示词/变更日志全部存 Redis（ts:* 前缀）
+  - key_pool.py：RPM 计数改用 Redis zset 共享、Key 列表存 Redis、排队轮询感知跨进程释放
+  - config.py 新增 redis_url / workers 配置
+  - main.py 的 stats / Key 管理适配新接口
+
+10.4 双模式自动降级（本地开发不受影响）
+  - REDIS_URL 未配置 → 内存模式（与之前行为完全一致）
+  - REDIS_URL 配置但连不上 / 未装 redis 包 → 自动退回内存模式
+  - Java 后端、前端零改动
+
+10.5 效果
+  - 单机 2 进程并行处理请求，充分利用多核
+  - 会话/画像/提示词跨 worker 共享，不会出现"题目/上下文丢失"
+  - 为后续多副本 + nginx 横向扩展打基础（再加副本无需改代码）
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+阶段 11: 代码沙箱安全加固
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+11.1 背景
+  - 编辑器"运行代码"原实现：本机 javac/java 直接执行（仅临时目录 + 超时）
+  - 风险：代码直跑服务器，Runtime.exec / Socket / 内存炸弹 / 删文件等可破坏宿主机
+
+11.2 三层防护（SandboxService.java 重构）
+  - 第 1 层 资源限制：代码 ≤ 300 行、≤ 100KB，超限直接拒绝
+  - 第 2 层 危险 API 拦截：正则扫描 System.exit / Runtime / ProcessBuilder / exec /
+           Socket / URLConnection / 删文件 / shutdownHook / Unsafe 等 17 项，
+           命中即拒绝并提示（已排除 getClassLoader 等教学常用 API 防误伤）
+  - 第 3 层 Docker 容器隔离：docker run --rm --network none --memory 256m
+           --cpus 0.5 --pids-limit 100，挂载临时目录编译+运行，禁网限资源
+           （与力扣/LeetCode 同款做法），镜像 eclipse-temurin:17-jdk
+
+11.3 双模式降级
+  - 启动时检测 Docker 可用 → 容器执行
+  - Docker 不可用 → 回退本机执行（保留第 1/2 层限制），日志告警"禁止用于生产"
+  - 执行超时 30s（Docker）/ 编译 15s + 运行 10s（本机），超时强杀 + docker kill 兜底
+  - 异步读子进程输出，避免管道缓冲区写满死锁
+
+11.4 验证
+  - mvn compile 通过
+  - 拦截正则 11 个用例全过（恶意代码全拦、教学代码零误伤）
+
+================================================================================
+三、数据库表结构
+================================================================================
+
+项目共 17 张表，初始化脚本见 init-mysql.sql：
+
+  ┌──────────────────────────┬──────────────────────────────────┐
+  │ 表名                     │ 用途                             │
+  ├──────────────────────────┼──────────────────────────────────┤
+  │ user                     │ 用户信息                         │
+  │ lab_question_bank        │ 题库                             │
+  │ question_option          │ 题目选项                         │
+  │ lab_scenario             │ 学习场景（陷阱代码）             │
+  │ lab_session              │ 学习会话                         │
+  │ lab_knowledge_card       │ 知识卡片                         │
+  │ lab_community_trap       │ 社区陷阱                         │
+  │ lab_question_progress    │ 题目学习进度                     │
+  │ lab_discussion           │ 题目讨论                         │
+  │ assistant_conversation   │ AI 对话                         │
+  │ assistant_message        │ AI 消息                         │
+  │ assistant_config         │ AI 配置（键值存储）              │
+  │ daily_learning           │ 每日学习记录                     │
+  │ learning_report          │ 学习报告                         │
+  │ guidance_session         │ 引导式学习会话                   │
+  │ planning_session         │ 学习规划会话                     │
+  │ user_notification_config │ 用户通知配置                     │
+  └──────────────────────────┴──────────────────────────────────┘
+
+================================================================================
+四、项目目录结构
+================================================================================
+
+cortex2/
+├── src/main/java/com/cortex/lab/
+│   ├── controller/
+│   │   └── LabController.java          # 主控制器，所有业务 API
+│   ├── dto/
+│   │   ├── KnowledgeNodeDTO.java       # 知识树节点 DTO
+│   │   ├── CommunityTrapSubmitRequest.java
+│   │   └── UserProfileDTO.java
+│   ├── entity/
+│   │   ├── User.java                   # 17 个实体类...
+│   │   ├── QuestionBank.java
+│   │   ├── KnowledgeCard.java
+│   │   ├── CommunityTrap.java
+│   │   └── ...
+│   ├── service/
+│   │   ├── KnowledgeTreeService.java   # 知识树构建（9 大模块 + 其他）
+│   │   ├── QuestionBankService.java    # 题库服务
+│   │   ├── AssistantService.java       # AI 助手服务
+│   │   ├── PythonAIService.java        # Python AI 代理
+│   │   ├── CommunityTrapService.java   # 社区陷阱服务
+│   │   ├── ReportNarrativeService.java # 报告生成服务
+│   │   ├── ProfileService.java         # 用户画像服务
+│   │   └── ...
+│   └── config/
+│       └── JwtAuthFilter.java          # JWT 认证过滤器
+│
+├── src/main/resources/
+│   ├── application.yml                 # 主配置文件
+│   └── static/lab/                     # 前端构建产物
+│
+├── lab-frontend/                       # Vue3 前端源码
+│   ├── src/
+│   │   ├── views/
+│   │   │   ├── PracticeView.vue        # 练习页（知识树 + 编辑器）
+│   │   │   ├── QuestionsView.vue       # 题库页
+│   │   │   ├── ProfileView.vue         # 个人中心
+│   │   │   ├── CommunityView.vue       # 社区陷阱
+│   │   │   ├── AdminView.vue           # 后台管理
+│   │   │   └── CardsView.vue           # 知识卡片
+│   │   ├── components/
+│   │   │   ├── TreeNode.vue            # 知识树节点组件
+│   │   │   ├── KnowledgeTree.vue       # 知识树容器
+│   │   │   ├── GlobalChat.vue          # AI 助手聊天
+│   │   │   ├── ConfigPanel.vue         # 配置面板（已隐藏）
+│   │   │   └── CodeEditor.vue          # Monaco 代码编辑器
+│   │   ├── stores/
+│   │   │   ├── auth.ts                 # 认证状态
+│   │   │   ├── tree.ts                 # 知识树状态
+│   │   │   ├── chat.ts                 # 聊天状态
+│   │   │   ├── config.ts               # 配置状态（已移除 maxTokens）
+│   │   │   └── notebook.ts             # 笔记状态
+│   │   ├── types/index.ts              # TypeScript 类型定义
+│   │   └── api/client.ts               # API 客户端
+│   └── vite.config.ts
+│
+├── ai-assistant-py/agent-engine-service/  # Python AI 服务
+│   ├── main.py                         # FastAPI 入口
+│   ├── llm_client.py                   # LLM 客户端（多 Key 池）
+│   ├── pipeline.py                     # 教学流水线（压缩、隔离）
+│   ├── config.py                       # 配置管理
+│   ├── models.py                       # 请求/响应模型
+│   ├── trace_store.py                  # 内存存储
+│   ├── redis_store.py                  # Redis 共享存储（多 worker）
+│   ├── requirements.txt                # Python 依赖
+│   └── Dockerfile                      # Docker 镜像
+│
+├── init-mysql.sql                      # 数据库初始化脚本
+├── docker-compose.yml                  # Docker 编排文件
+├── Dockerfile                          # Java 应用 Docker 镜像
+├── .env                                # 环境变量
+├── README.md                           # 项目说明
+└── 工作日志.txt                        # 本文件
+
+================================================================================
+五、如何复刻这个项目
+================================================================================
+
+5.1 环境准备
+  ┌─────────────────────────────────────────────────────────────┐
+  │ 1. 安装 JDK 17+   (https://adoptium.net)                   │
+  │ 2. 安装 Maven 3.6+ (https://maven.apache.org)              │
+  │ 3. 安装 MySQL 8.0  (https://dev.mysql.com/downloads)       │
+  │ 4. 安装 Python 3.11 (https://www.python.org/downloads)     │
+  │ 5. 安装 Node.js 20  (https://nodejs.org)                   │
+  │ 6. (可选) 安装 Docker Desktop                              │
+  └─────────────────────────────────────────────────────────────┘
+
+5.2 数据库初始化
+  # 启动 MySQL（端口 3306）
+  mysql -u root -p123456
+
+  # 创建数据库
+  CREATE DATABASE cortex2 DEFAULT CHARACTER SET utf8mb4;
+
+  # 导入初始化脚本
+  mysql -u root -p123456 cortex2 < init-mysql.sql
+
+5.3 启动 Python AI 服务
+  cd ai-assistant-py/agent-engine-service
+  pip install -r requirements.txt
+  python main.py
+  # 服务运行在 http://localhost:8001
+
+5.4 启动 Java 后端
+  # 设置环境变量（Windows PowerShell）
+  $env:MYSQL_PASSWORD = "123456"
+
+  # 编译并启动
+  cd cortex2
+  mvn clean package -DskipTests
+  mvn spring-boot:run
+  # 服务运行在 http://localhost:8081
+
+5.5 启动前端开发服务器（可选）
+  cd lab-frontend
+  npm install
+  npm run dev
+  # 开发服务器运行在 http://localhost:5173
+
+5.6 访问项目
+  ┌──────────────────────────────────────────────────────┐
+  │ 前端页面:  http://localhost:8081/lab/                │
+  │ 后台管理:  http://localhost:8081/lab/#/admin         │
+  │ Swagger:   http://localhost:8081/swagger-ui.html     │
+  │ Python:    http://localhost:8001/docs                │
+  └──────────────────────────────────────────────────────┘
+
+5.7 使用 Docker 启动（推荐，一键）
+  # 方式一：双击 start.bat（自动检查 Docker → 构建镜像 → 启动全部服务）
+  # 方式二：手动命令
+  # 确保 Docker Desktop 已启动
+  docker compose build        # 首次构建（Java 镜像需先有 target/*.jar）
+  docker compose up -d        # 后台启动全部服务
+  # 访问 http://localhost:8081/lab/
+  # 停止：双击 stop.bat 或 docker compose down
+
+================================================================================
+六、API 接口清单
+================================================================================
+
+认证相关:
+  POST /api/auth/login          - 登录
+  POST /api/auth/register       - 注册
+  GET  /api/auth/me             - 获取当前用户信息
+
+知识树:
+  GET  /api/lab/knowledge-tree          - 获取完整知识树
+  POST /api/lab/knowledge-tree/generate - 根据节点生成代码/题目
+
+题库:
+  POST /api/lab/questions/import        - 导入题目
+  POST /api/lab/questions/batch-import  - 批量导入
+  GET  /api/lab/questions               - 获取题目列表
+
+社区陷阱:
+  POST /api/lab/community-trap/submit   - 提交陷阱
+  GET  /api/lab/community-trap/list     - 陷阱列表
+
+AI 助手 (需登录):
+  POST /api/lab/chat                    - 发送消息
+  POST /api/lab/assistant/conversations - 创建对话
+  GET  /api/lab/assistant/conversations - 获取对话列表
+
+个人中心:
+  GET  /api/lab/user/profile            - 获取画像
+  PUT  /api/lab/user/profile            - 更新画像
+  POST /api/lab/user/profile/analyze-chat - AI 分析对话
+
+学习报告:
+  GET  /api/lab/report/ai-narrative     - AI 生成报告
+
+后台管理 (需 ROOT 角色):
+  GET  /api/lab/admin/*                 - 后台管理相关接口
+
+================================================================================
+七、常见问题排查
+================================================================================
+
+Q: 登录失败，返回 500？
+A: 检查 MYSQL_PASSWORD 环境变量是否设置，或 application.yml 中默认值是否正确。
+
+Q: 知识树节点点击不生成代码？
+A: 确保 Python AI 服务在 8001 端口运行。
+   检查 TreeNode.vue 的 onSelect 函数是否去掉了 isLeaf 限制。
+
+Q: 题库数据清空后又回来了？
+A: 检查 @PostConstruct 注释是否完整，有 4 个种子方法需要注释掉。
+
+Q: API 返回 404？
+A: 检查接口路径是否正确，所有 Lab 接口前缀为 /api/lab/。
+
+Q: AI 助手提示"请先注册或登录"？
+A: AI 助手接口需要 JWT 认证，匿名用户不能使用。
+
+================================================================================
+八、技术栈总结
+================================================================================
+
+  ┌───────────────┬──────────────────────────────────────────┐
+  │ 层级          │ 技术                                     │
+  ├───────────────┼──────────────────────────────────────────┤
+  │ 前端          │ Vue 3 + TypeScript + Vite + Pinia        │
+  │ 后端          │ Spring Boot 3.2 + MyBatis-Plus + JDK 17  │
+  │ AI 服务       │ FastAPI + Python 3.11 + DeepSeek API     │
+  │ 数据库        │ MySQL 8.0 + utf8mb4                      │
+  │ 缓存/共享     │ Redis 7（共享会话/画像/限流计数）         │
+  │ 认证          │ JWT token                                │
+  │ 构建工具      │ Maven 3.6 + Node.js 20                   │
+  │ 容器化        │ Docker + Docker Compose（一键启动）      │
+  │ 流式交互      │ SSE（Java 网关 → Python → 前端）        │
+  └───────────────┴──────────────────────────────────────────┘
+
+================================================================================
+  日志结束 | 最后更新: 2026-08-17 | 当前支持 Docker 一键启动（start.bat）4 服务
+================================================================================

@@ -11,7 +11,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     url: jdbc:mysql://${MYSQL_HOST:localhost}:3306/cortex2?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&useUnicode=yes&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci
     username: ${MYSQL_USER:root}
-    password: ${MYSQL_PASSWORD}
+    password: ${MYSQL_PASSWORD:123456}
     hikari:
       maximum-pool-size: 10
       minimum-idle: 5

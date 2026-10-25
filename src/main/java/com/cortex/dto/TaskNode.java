@@ -14,5 +14,4 @@ public class TaskNode {
     private String status;
     private String input;
     private String output;
-    private String errorMessage;
 }

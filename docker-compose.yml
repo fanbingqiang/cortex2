@@ -19,20 +19,53 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    container_name: cortex-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    volumes:
+      - redis-data:/data
+
+  python-ai:
+    build: ./ai-assistant-py/agent-engine-service
+    container_name: cortex-python-ai
+    ports:
+      - "8001:8001"
+    environment:
+      LLM_API_KEY: ${LLM_API_KEY}
+      REDIS_URL: redis://redis:6379
+      TZ: Asia/Shanghai
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   cortex-app:
     build: .
     container_name: cortex-app
     ports:
       - "8081:8081"
-    env_file:
-      - .env
     environment:
-      - MYSQL_HOST=mysql
-      - TZ=Asia/Shanghai
+      MYSQL_HOST: mysql
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      PYTHON_HOST: python-ai
+      LLM_API_KEY: ${LLM_API_KEY}
+      TZ: Asia/Shanghai
     depends_on:
       mysql:
         condition: service_healthy
+      python-ai:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
   mysql-data:
+  redis-data:

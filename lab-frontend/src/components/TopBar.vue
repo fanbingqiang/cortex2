@@ -6,11 +6,10 @@ const router = useRouter(); const route = useRoute()
 const auth = useAuthStore()
 const tabs = [
   { name: 'practice', label: '实战练习', path: '/practice' },
-  { name: 'questions', label: '题库', path: '/questions' },
   { name: 'cards', label: '知识卡片', path: '/cards' },
   { name: 'community', label: '社区陷阱', path: '/community' },
-  { name: 'progress', label: '学习中心', path: '/progress' },
-]
+  { name: 'progress', label: '个人中心', path: '/progress' },
+  ]
 function isActive(path: string) { return route.path === path || (path === '/practice' && route.path === '/') }
 </script>
 <template>
@@ -19,6 +18,7 @@ function isActive(path: string) { return route.path === path || (path === '/prac
     <template v-for="tab in tabs" :key="tab.name">
       <router-link :to="tab.path" class="nav-tab" :class="{ active: isActive(tab.path) }">{{ tab.label }}</router-link>
     </template>
+    <router-link v-if="auth.isAdmin" to="/admin" class="nav-tab" :class="{ active: isActive('/admin') }">后台管理</router-link>
     <div style="flex:1"></div>
     <div style="display:flex;align-items:center;gap:6px;">
       <span v-if="auth.username" class="avatar-circle">{{ auth.username.charAt(0).toUpperCase() }}</span>

@@ -18,6 +18,7 @@ public class KnowledgeCard {
     private Long id;
     private Long questionId;
     private String title;
+    private String knowledgePath;   // 知识树路径，如 "Redis篇/Redis分布式锁/其他"
     private String keyPoints;
     private String detailExplanation;
     private String codeSnippet;

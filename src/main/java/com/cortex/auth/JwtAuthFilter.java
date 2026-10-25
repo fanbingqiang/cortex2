@@ -16,9 +16,11 @@ import java.util.Map;
 @Order(1)
 @RequiredArgsConstructor
 public class JwtAuthFilter implements Filter {
-    // JWT 认证过滤器，保护 /api/admin/* 和 /api/auth/me 路径
+    // JWT 认证过滤器，拦截需要登录的 API 路径
 
     private final JwtService jwtService;
+
+    private static final String GUEST_MSG = "{\"code\":401,\"message\":\"请先注册账号后再使用AI助手功能\",\"data\":null}";
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
@@ -27,8 +29,11 @@ public class JwtAuthFilter implements Filter {
         HttpServletResponse response = (HttpServletResponse) res;
         String path = request.getRequestURI();
 
-        // 只需要拦截 /api/auth/me
-        boolean needsAuth = "/api/auth/me".equals(path);
+        // 需要登录的路径
+        boolean needsAuth = "/api/auth/me".equals(path)
+                || path.startsWith("/api/lab/assistant/")
+                || path.startsWith("/api/lab/admin/")
+                || path.equals("/api/lab/chat");
 
         if (needsAuth) {
             String authHeader = request.getHeader("Authorization");
@@ -45,7 +50,7 @@ public class JwtAuthFilter implements Filter {
             }
             response.setContentType("application/json;charset=UTF-8");
             response.setStatus(401);
-            response.getWriter().write("{\"code\":401,\"message\":\"未登录或Token已过期\",\"data\":null}");
+            response.getWriter().write(GUEST_MSG);
             return;
         }
 

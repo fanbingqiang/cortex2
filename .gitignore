@@ -19,3 +19,16 @@ data/
 # frontend build output
 src/main/resources/static/lab/
 lab-frontend/node_modules/
+
+### push-cleanup: build artifacts, IDE, secrets
+target/
+node_modules/
+.env
+.env.*
+!.env.example
+*.log
+*.db
+*.mv.db
+*.sqlite
+.idea/
+.vscode/

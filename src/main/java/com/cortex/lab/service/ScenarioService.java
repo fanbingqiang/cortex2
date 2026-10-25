@@ -4,7 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.cortex.lab.dto.ScenarioDto;
 import com.cortex.lab.entity.LabScenario;
 import com.cortex.lab.mapper.LabScenarioMapper;
-import com.cortex.llm.LlmClient;
+import com.cortex.lab.service.PythonAIService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 public class ScenarioService {
 
     private final LabScenarioMapper scenarioMapper;
-    private final LlmClient llmClient;
+    private final PythonAIService pythonAIService;
 
     public List<ScenarioDto> listAll() {
         List<LabScenario> scenarios = scenarioMapper.selectList(null);
@@ -58,7 +58,7 @@ public class ScenarioService {
 """.formatted(knowledgePoint, category != null ? category : "Java基础");
 
         try {
-            String result = llmClient.chatSimple(prompt);
+            String result = pythonAIService.chatSimple(prompt);
             ScenarioDto dto = JSON.parseObject(result, ScenarioDto.class);
 
             LabScenario entity = new LabScenario();

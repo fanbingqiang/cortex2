@@ -82,7 +82,9 @@ public class TaskDecomposer {
                 node.setDescription(nodeJson.getString("description"));
                 node.setStatus("PENDING");
                 
-                node.setAgentId(findBestAgent(node));
+                String capability = nodeJson.getString("capability");
+                String agentId = findBestAgent(capability);
+                node.setAgentId(agentId);
                 
                 List<String> dependencies = nodeJson.getList("dependencies", String.class);
                 node.setDependencies(dependencies != null ? dependencies : new ArrayList<>());
@@ -108,41 +110,10 @@ public class TaskDecomposer {
         return response;
     }
     
-    private String findBestAgent(TaskNode node) {
-        List<AgentMetadata> agents = agentRegistry.getAllAgents();
-
-        // 构建 LLM 选择提示
-        StringBuilder sb = new StringBuilder();
-        sb.append("从以下Agent中选择最适合执行当前任务的Agent。\n\n");
-        sb.append("任务标题：").append(node.getTitle()).append("\n");
-        sb.append("任务描述：").append(node.getDescription()).append("\n\n");
-        sb.append("可选Agent：\n");
-        for (int i = 0; i < agents.size(); i++) {
-            AgentMetadata a = agents.get(i);
-            sb.append(i + 1).append(". ").append(a.getAgentId())
-                    .append(" — ").append(a.getDescription())
-                    .append(" (能力: ").append(a.getCapabilities()).append(")\n");
-        }
-        sb.append("\n只输出最合适的那个Agent的ID，不要其他文字。");
-
-        try {
-            String response = llmClient.chatSimple(sb.toString());
-            String agentId = response.trim();
-            // 验证返回的agentId是否存在
-            for (AgentMetadata a : agents) {
-                if (a.getAgentId().equals(agentId)) {
-                    return agentId;
-                }
-            }
-        } catch (Exception e) {
-            log.warn("LLM选择Agent失败，回退到能力匹配: {}", e.getMessage());
-        }
-
-        // 回退：用 capability 匹配
-        List<AgentMetadata> matched = agentRegistry.findAgentsByCapability(
-                node.getDescription() != null ? node.getDescription() : "");
-        if (!matched.isEmpty()) {
-            return matched.get(0).getAgentId();
+    private String findBestAgent(String capability) {
+        List<AgentMetadata> agents = agentRegistry.findAgentsByCapability(capability);
+        if (!agents.isEmpty()) {
+            return agents.get(0).getAgentId();
         }
         return "search-agent";
     }

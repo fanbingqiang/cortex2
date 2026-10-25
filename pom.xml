@@ -20,7 +20,7 @@
     <properties>
         <java.version>17</java.version>
         <mybatis-plus.version>3.5.5</mybatis-plus.version>
-        <node.install.dir>D:/tools/node</node.install.dir>
+        <node.install.dir>D:/tools/node/node-v20.17.0-win-x64</node.install.dir>
     </properties>
     
     <dependencies>

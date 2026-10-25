@@ -3,26 +3,21 @@ package com.cortex.agent;
 import com.cortex.entity.AgentMetadata;
 import com.cortex.mapper.AgentMetadataMapper;
 import com.cortex.mapper.MistakeRecordMapper;
-import com.cortex.lab.entity.User;
-import com.cortex.lab.mapper.UserMapper;
-import com.cortex.mapper.MistakeRecordMapper;
+import com.cortex.mapper.UserProfileMapper;
+import com.cortex.dto.UserProfileDto;
+import com.cortex.entity.MistakeRecord;
+import com.cortex.entity.UserProfile;
 import com.cortex.llm.LlmClient;
 import com.cortex.llm.LlmRequest;
 import com.cortex.llm.LlmResponse;
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.alibaba.fastjson2.JSON;
-import com.alibaba.fastjson2.JSONArray;
-import com.cortex.dto.UserProfileDto;
-import com.cortex.entity.MistakeRecord;
 import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import jakarta.annotation.PostConstruct;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
@@ -32,7 +27,7 @@ public class AgentRegistry {
     
     private final AgentMetadataMapper agentMetadataMapper;
     private final LlmClient llmClient;
-    private final UserMapper userProfileMapper;
+    private final UserProfileMapper userProfileMapper;
     private final MistakeRecordMapper mistakeRecordMapper;
     
     private final Map<String, AgentMetadata> agentCache = new ConcurrentHashMap<>();
@@ -60,20 +55,12 @@ public class AgentRegistry {
         return agentCache.values().stream()
                 .filter(agent -> {
                     String capabilities = agent.getCapabilities();
-                    if (capabilities == null) {
-                        return false;
-                    }
-                    try {
-                        return JSONArray.parseArray(capabilities, String.class).contains(capability);
-                    } catch (Exception e) {
-                        return capabilities.contains(capability);
-                    }
+                    return capabilities != null && capabilities.contains(capability);
                 })
                 .sorted((a, b) -> b.getPriority().compareTo(a.getPriority()))
                 .toList();
     }
-
-
+    
     public String executeAgent(String agentId, String input, String userId) {
         AgentMetadata agent = getAgent(agentId);
         if (agent == null) {
@@ -121,8 +108,7 @@ public class AgentRegistry {
     }
     
     private UserProfileDto getUserProfile(String userId) {
-        User profile = userProfileMapper.selectOne(
-            new LambdaQueryWrapper<User>().eq(User::getUserId, userId));
+        UserProfile profile = userProfileMapper.selectById(userId);
         if (profile == null) {
             return null;
         }
@@ -130,7 +116,7 @@ public class AgentRegistry {
         UserProfileDto dto = new UserProfileDto();
         dto.setUserId(profile.getUserId());
         dto.setUsername(profile.getUsername());
-
+        
         if (StrUtil.isNotBlank(profile.getPersonalityTags())) {
             dto.setPersonalityTags(JSON.parseArray(profile.getPersonalityTags(), String.class));
         }

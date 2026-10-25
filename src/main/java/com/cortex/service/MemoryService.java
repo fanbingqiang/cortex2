@@ -3,15 +3,14 @@ package com.cortex.service;
 import com.alibaba.fastjson2.JSON;
 import com.cortex.dto.UserProfileDto;
 import com.cortex.entity.MistakeRecord;
-import com.cortex.lab.entity.User;
-import com.cortex.lab.mapper.UserMapper;
+import com.cortex.entity.UserProfile;
 import com.cortex.mapper.MistakeRecordMapper;
+import com.cortex.mapper.UserProfileMapper;
 import cn.hutool.core.util.StrUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,57 +19,55 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class MemoryService {
-
-    private final UserMapper userMapper;
+    
+    private final UserProfileMapper userProfileMapper;
     private final MistakeRecordMapper mistakeRecordMapper;
-
-    public User getOrCreateProfile(String userId, String username) {
-        User user = userMapper.selectOne(
-            new LambdaQueryWrapper<User>().eq(User::getUserId, userId));
-        if (user == null) {
-            user = new User();
-            user.setUserId(userId);
-            user.setUsername(username);
-            user.setPersonalityTags("[]");
-            user.setWorkHabits("[]");
-            user.setPreferences("{}");
-            user.setGmtCreate(LocalDateTime.now());
-            user.setGmtModified(LocalDateTime.now());
-            userMapper.insert(user);
+    
+    public UserProfile getOrCreateProfile(String userId, String username) {
+        UserProfile profile = userProfileMapper.selectById(userId);
+        if (profile == null) {
+            profile = new UserProfile();
+            profile.setUserId(userId);
+            profile.setUsername(username);
+            profile.setPersonalityTags("[]");
+            profile.setWorkHabits("[]");
+            profile.setPreferences("{}");
+            profile.setGmtCreate(LocalDateTime.now());
+            profile.setGmtModified(LocalDateTime.now());
+            userProfileMapper.insert(profile);
         }
-        return user;
+        return profile;
     }
-
+    
     public UserProfileDto getProfile(String userId) {
-        User user = userMapper.selectOne(
-            new LambdaQueryWrapper<User>().eq(User::getUserId, userId));
-        if (user == null) {
+        UserProfile profile = userProfileMapper.selectById(userId);
+        if (profile == null) {
             return null;
         }
-
+        
         UserProfileDto dto = new UserProfileDto();
-        dto.setUserId(user.getUserId());
-        dto.setUsername(user.getUsername());
-
-        if (StrUtil.isNotBlank(user.getPersonalityTags())) {
-            dto.setPersonalityTags(JSON.parseArray(user.getPersonalityTags(), String.class));
+        dto.setUserId(profile.getUserId());
+        dto.setUsername(profile.getUsername());
+        
+        if (StrUtil.isNotBlank(profile.getPersonalityTags())) {
+            dto.setPersonalityTags(JSON.parseArray(profile.getPersonalityTags(), String.class));
         } else {
             dto.setPersonalityTags(new ArrayList<>());
         }
-
-        if (StrUtil.isNotBlank(user.getWorkHabits())) {
-            dto.setWorkHabits(JSON.parseArray(user.getWorkHabits(), String.class));
+        
+        if (StrUtil.isNotBlank(profile.getWorkHabits())) {
+            dto.setWorkHabits(JSON.parseArray(profile.getWorkHabits(), String.class));
         } else {
             dto.setWorkHabits(new ArrayList<>());
         }
-
+        
         List<MistakeRecord> mistakes = mistakeRecordMapper.selectList(
-            new LambdaQueryWrapper<MistakeRecord>()
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<MistakeRecord>()
                 .eq(MistakeRecord::getUserId, userId)
                 .orderByDesc(MistakeRecord::getGmtCreate)
                 .last("LIMIT 10")
         );
-
+        
         List<UserProfileDto.MistakeDto> mistakeDtos = new ArrayList<>();
         for (MistakeRecord m : mistakes) {
             UserProfileDto.MistakeDto md = new UserProfileDto.MistakeDto();
@@ -79,38 +76,38 @@ public class MemoryService {
             mistakeDtos.add(md);
         }
         dto.setMistakes(mistakeDtos);
-
+        
         return dto;
     }
-
+    
     public void addPersonalityTag(String userId, String tag) {
-        User user = getOrCreateProfile(userId, "用户");
-        List<String> tags = JSON.parseArray(user.getPersonalityTags(), String.class);
+        UserProfile profile = getOrCreateProfile(userId, "用户");
+        List<String> tags = JSON.parseArray(profile.getPersonalityTags(), String.class);
         if (tags == null) {
             tags = new ArrayList<>();
         }
         if (!tags.contains(tag)) {
             tags.add(tag);
-            user.setPersonalityTags(JSON.toJSONString(tags));
-            user.setGmtModified(LocalDateTime.now());
-            userMapper.updateById(user);
+            profile.setPersonalityTags(JSON.toJSONString(tags));
+            profile.setGmtModified(LocalDateTime.now());
+            userProfileMapper.updateById(profile);
         }
     }
-
+    
     public void addWorkHabit(String userId, String habit) {
-        User user = getOrCreateProfile(userId, "用户");
-        List<String> habits = JSON.parseArray(user.getWorkHabits(), String.class);
+        UserProfile profile = getOrCreateProfile(userId, "用户");
+        List<String> habits = JSON.parseArray(profile.getWorkHabits(), String.class);
         if (habits == null) {
             habits = new ArrayList<>();
         }
         if (!habits.contains(habit)) {
             habits.add(habit);
-            user.setWorkHabits(JSON.toJSONString(habits));
-            user.setGmtModified(LocalDateTime.now());
-            userMapper.updateById(user);
+            profile.setWorkHabits(JSON.toJSONString(habits));
+            profile.setGmtModified(LocalDateTime.now());
+            userProfileMapper.updateById(profile);
         }
     }
-
+    
     public void addMistake(String userId, String keyword, String description, String taskId) {
         MistakeRecord record = new MistakeRecord();
         record.setUserId(userId);
@@ -120,16 +117,16 @@ public class MemoryService {
         record.setGmtCreate(LocalDateTime.now());
         mistakeRecordMapper.insert(record);
     }
-
+    
     public void updateProfile(String userId, List<String> personalityTags, List<String> workHabits) {
-        User user = getOrCreateProfile(userId, "用户");
+        UserProfile profile = getOrCreateProfile(userId, "用户");
         if (personalityTags != null) {
-            user.setPersonalityTags(JSON.toJSONString(personalityTags));
+            profile.setPersonalityTags(JSON.toJSONString(personalityTags));
         }
         if (workHabits != null) {
-            user.setWorkHabits(JSON.toJSONString(workHabits));
+            profile.setWorkHabits(JSON.toJSONString(workHabits));
         }
-        user.setGmtModified(LocalDateTime.now());
-        userMapper.updateById(user);
+        profile.setGmtModified(LocalDateTime.now());
+        userProfileMapper.updateById(profile);
     }
 }

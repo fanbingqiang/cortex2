@@ -9,6 +9,7 @@ public class CardDto {
     private Long questionId;
     private String questionTitle;
     private String title;
+    private String knowledgePath;
     private String keyPoints;
     private String detailExplanation;
     private String codeSnippet;

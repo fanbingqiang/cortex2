@@ -5,8 +5,9 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-import java.time.LocalDateTime;
-
+/**
+ * 通用键值配置 — 用于知识树掌握状态等
+ */
 @Data
 @TableName("assistant_config")
 public class AssistantConfig {
@@ -15,7 +16,6 @@ public class AssistantConfig {
     private String configKey;
     private String configValue;
     private String configType;
-    private String description;
-    private LocalDateTime gmtCreate;
-    private LocalDateTime gmtModified;
+    private java.time.LocalDateTime gmtCreate;
+    private java.time.LocalDateTime gmtModified;
 }

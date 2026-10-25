@@ -10,6 +10,11 @@ import com.cortex.lab.service.NotificationService;
 import com.cortex.lab.service.ReportNarrativeService;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
+
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -164,7 +169,23 @@ public class AuthController {
             if (userId == null) {
                 return ApiResponse.error("userId不能为空");
             }
-            return ApiResponse.success("更新成功", notificationService.updateConfig(userId, body));
+            var config = notificationService.updateConfig(userId, body);
+            // 主动模式变化时通知 AI 服务
+            if (body.containsKey("aiActiveMode")) {
+                try {
+                    String json = JSON.toJSONString(Map.of("user_id", userId, "enabled", body.get("aiActiveMode")));
+                    HttpClient.newHttpClient().sendAsync(
+                        HttpRequest.newBuilder()
+                            .uri(URI.create("http://localhost:8000/api/ai/active-mode"))
+                            .header("Content-Type", "application/json")
+                            .POST(HttpRequest.BodyPublishers.ofString(json))
+                            .timeout(java.time.Duration.ofSeconds(2))
+                            .build(),
+                        HttpResponse.BodyHandlers.ofString()
+                    );
+                } catch (Exception ignored) {}
+            }
+            return ApiResponse.success("更新成功", config);
         } catch (Exception e) {
             return ApiResponse.error(e.getMessage());
         }

@@ -38,19 +38,55 @@ export const authApi = {
   del: <T>(path: string) => request<T>('DELETE', path, undefined, AUTH_PREFIX),
 }
 
+// Python AI 直连
+const PYTHON_PREFIX = 'http://localhost:8001'
+
+async function pythonRequest<T>(method: string, path: string, body?: unknown): Promise<ApiResponse<T>> {
+  try {
+    const res = await fetch(`${PYTHON_PREFIX}${path}`, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    })
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      return { code: res.status, message: text || `HTTP ${res.status}`, data: null as T }
+    }
+    return res.json()
+  } catch {
+    return { code: 500, message: 'Python 服务连接异常（端口 8001）', data: null as T }
+  }
+}
+
+export const pythonApi = {
+  chatStream: (body: { user_id: string; message: string; system_prompt?: string }) =>
+    fetch(`${PYTHON_PREFIX}/api/chat/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    }),
+}
+
+// 后台管理 API（通过 Java 代理，含角色校验）
+export const adminApi = {
+  getPrompts: () => labApi.get<any>('/admin/prompts'),
+  updatePrompts: (prompts: Record<string, string>, author?: string) => labApi.put('/admin/prompts', { prompts, author }),
+  getSessions: () => labApi.get<any>('/admin/sessions'),
+  getSession: (id: string) => labApi.get<any>(`/admin/sessions/${id}`),
+  getPromptChanges: (limit = 50) => labApi.get<any>(`/admin/prompt-changes?limit=${limit}`),
+  getKeyPool: () => labApi.get<any>('/admin/key-pool'),
+  addKey: (key: string) => labApi.post<any>('/admin/key-pool/add', { key }),
+  removeKey: (index: number) => labApi.delete<any>(`/admin/key-pool/${index}`),
+  getStats: () => labApi.get<any>('/admin/stats'),
+  getUsers: () => labApi.get<any>('/admin/users'),
+  banUser: (userId: string) => labApi.put<any>(`/admin/users/${userId}/ban`),
+  unbanUser: (userId: string) => labApi.put<any>(`/admin/users/${userId}/unban`),
+  getPromptHistory: (key: string) => labApi.get<any>(`/admin/prompts/${key}/history`),
+  rollbackPrompt: (key: string, version: number, author?: string) => labApi.put(`/admin/prompts/${key}/rollback`, { version, author }),
+  summarizeChanges: (changes: any[]) => labApi.post<any>('/admin/prompt-changes/summarize', { changes }),
+}
+
 export { getAuthHeaders }
 
 
-// ========== Task / Agent API ==========
-const TASK_PREFIX = '/api'
 
-export const taskApi = {
-  create: (requirement: string, userId: string) =>
-    request<any>('POST', '/task/create', { requirement, userId }, TASK_PREFIX),
-  execute: (taskId: string, userId: string) =>
-    request<any>('POST', '/task/execute', { taskId, userId }, TASK_PREFIX),
-  run: (requirement: string, userId: string) =>
-    request<any>('POST', '/task/run', { requirement, userId }, TASK_PREFIX),
-  get: (taskId: string) =>
-    request<any>('GET', `/task/${taskId}`, undefined, TASK_PREFIX),
-}

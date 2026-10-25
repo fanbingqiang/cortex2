@@ -165,10 +165,11 @@ onMounted(async () => {
         <h3 style="margin:0 0 16px;">通知设置</h3>
         <div v-if="!notificationConfig">加载中...</div>
         <div v-else style="display:flex;flex-direction:column;gap:12px;">
-          <div v-for="(_, key) in { dailyReminder: '每日提醒', reviewReminder: '复习提醒', reportPush: '报告推送' }" :key="key" style="display:flex;align-items:center;justify-content:space-between;">
-            <span style="font-size:13px;">{{ key === 'dailyReminder' ? '每日学习提醒' : key === 'reviewReminder' ? '复习提醒' : '报告推送' }}</span>
+          <div v-for="(_, key) in { dailyReminder: '每日提醒', reviewReminder: '复习提醒', reportPush: '报告推送', aiActiveMode: 'AI 导师主动模式' }" :key="key" style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:13px;">{{ key === 'dailyReminder' ? '每日学习提醒' : key === 'reviewReminder' ? '复习提醒' : key === 'reportPush' ? '报告推送' : 'AI 导师主动模式' }}</span>
             <label><input type="checkbox" v-model="notificationConfig[key]" true-value="true" false-value="false" /> <span style="font-size:12px;color:var(--muted);">{{ notificationConfig[key] === 'true' ? '已开启' : '已关闭' }}</span></label>
           </div>
+          <div v-if="notificationConfig.aiActiveMode === 'true'" style="font-size:11px;color:var(--muted);padding:4px 0;">AI 会主动观察你的学习状态并给出教学建议。关闭后仅在你提问时回复。</div>
           <div style="display:flex;gap:8px;justify-content:flex-end;">
             <button class="btn btn-ghost" @click="showNotifConfig = false">取消</button>
             <button class="btn btn-primary" :disabled="notifLoading" @click="updateNotificationConfig(); showNotifConfig = false">保存</button>

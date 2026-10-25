@@ -3,7 +3,7 @@ package com.cortex.lab.service;
 import com.alibaba.fastjson2.JSON;
 import com.cortex.lab.dto.LearningReportDTO;
 import com.cortex.lab.dto.UserInfoDTO;
-import com.cortex.llm.LlmClient;
+import com.cortex.lab.service.PythonAIService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,7 +17,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class ReportNarrativeService {
 
-    private final LlmClient llmClient;
+    private final PythonAIService pythonAIService;
     private final AuthService authService;
     private final LearningReportService learningReportService;
 
@@ -88,7 +88,7 @@ public class ReportNarrativeService {
                 weakStr
             );
 
-            return com.cortex.util.JsonUtils.cleanJson(llmClient.chatSimple("你是一名学习分析师", prompt));
+            return com.cortex.util.JsonUtils.cleanJson(pythonAIService.chatSimple("你是一名学习分析师", prompt));
         } catch (Exception e) {
             log.error("生成AI叙事报告失败", e);
             return buildFallbackNarrativeJson(userId, reportType, e.getMessage());

@@ -152,6 +152,7 @@ public class PlatformFeatureService {
                 case "generateCard" -> execGenerateCard(extractId(params));
                 case "deleteCard" -> execDeleteCard(extractId(params));
                 case "deleteQuestion" -> execDeleteQuestion(extractId(params));
+                case "updateUserProfile" -> execUpdateUserProfile(params, userId);
                 default -> "未知功能：" + featureName + "，请检查功能名是否正确。";
             };
         } catch (Exception e) {
@@ -471,7 +472,7 @@ public class PlatformFeatureService {
         String pitfall = (String) payload.get("expectedPitfall");
         String explanation = (String) payload.get("correctExplanation");
         if (title == null || title.isBlank()) return "题目标题不能为空。";
-        var q = questionBankService.importQuestion(title, null, trapCode, pitfall, explanation);
+        var q = questionBankService.importQuestion(title, null, trapCode, pitfall, explanation, null);
         return "**题目已创建**（ID=" + q.getId() + "）：" + q.getTitle();
     }
 
@@ -546,6 +547,31 @@ public class PlatformFeatureService {
         return mastered ? "已标记该节点为掌握。" : "已取消掌握标记。";
     }
 
+    private String execUpdateUserProfile(Map<String, Object> params, String userId) {
+        if (userId == null || userId.isBlank() || "anonymous".equals(userId)) return "请先登录。";
+        User p = userMapper.selectOne(new LambdaQueryWrapper<User>().eq(User::getUserId, userId).last("LIMIT 1"));
+        if (p == null) return "暂无学习数据，请先做题。";
+        boolean updated = false;
+        if (params.containsKey("weakAreas")) {
+            p.setWeakAreas((String) params.get("weakAreas"));
+            updated = true;
+        }
+        if (params.containsKey("skillLevel")) {
+            p.setSkillLevel((String) params.get("skillLevel"));
+            updated = true;
+        }
+        if (params.containsKey("learningGoal")) {
+            p.setLearningGoal((String) params.get("learningGoal"));
+            updated = true;
+        }
+        if (updated) {
+            p.setGmtModified(java.time.LocalDateTime.now());
+            userMapper.updateById(p);
+            return "✅ 已更新学习画像。";
+        }
+        return "没有需要更新的内容。";
+    }
+
     private String execListCards() {
         var cards = knowledgeCardService.listAll();
         if (cards.isEmpty()) return "暂无知识卡片。";
@@ -598,5 +624,151 @@ public class PlatformFeatureService {
     private Map<String, Object> mapPayload(Object payload) {
         if (payload instanceof Map) return (Map<String, Object>) payload;
         return null;
+    }
+
+    // ==================== 工具定义（Function Calling） ====================
+
+    /** 生成所有工具的 Function Calling 定义 */
+    public java.util.List<com.cortex.llm.ToolDefinition> getToolDefinitions() {
+        java.util.List<com.cortex.llm.ToolDefinition> tools = new java.util.ArrayList<>();
+
+        tools.add(tool("searchQuestions", "搜索题库，按关键词查找题目", map(
+            "type", "object", "properties", map(
+                "keyword", map("type", "string", "description", "搜索关键词")
+            ), "required", list("keyword")
+        )));
+        tools.add(tool("getQuestion", "查看题目详情", map(
+            "type", "object", "properties", map(
+                "questionId", map("type", "number", "description", "题目ID")
+            ), "required", list("questionId")
+        )));
+        tools.add(tool("getReviewList", "查看待复习题目列表，无需参数", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("getKnowledgeTree", "获取知识树结构，查看所有知识点", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("generateScenario", "从知识树节点生成陷阱代码场景", map(
+            "type", "object", "properties", map(
+                "nodeId", map("type", "string", "description", "知识树节点ID")
+            ), "required", list("nodeId")
+        )));
+        tools.add(tool("loadToEditor", "将代码文本加载到编辑器（黑板）", map(
+            "type", "object", "properties", map(
+                "code", map("type", "string", "description", "要加载的代码文本")
+            ), "required", list("code")
+        )));
+        tools.add(tool("loadQuestion", "从题库加载题目到编辑器黑板", map(
+            "type", "object", "properties", map(
+                "questionId", map("type", "number", "description", "题目ID")
+            ), "required", list("questionId")
+        )));
+        tools.add(tool("runCode", "运行编辑器中的代码", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("resetCode", "重置编辑器代码为原始代码", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("switchTab", "切换页面标签", map(
+            "type", "object", "properties", map(
+                "tab", map("type", "string", "enum", list("practice", "questions", "cards", "community", "progress"),
+                    "description", "目标标签页")
+            ), "required", list("tab")
+        )));
+        tools.add(tool("searchTraps", "搜索社区陷阱", map(
+            "type", "object", "properties", map(
+                "javaVersion", map("type", "string", "description", "Java版本，如 Java 17"),
+                "category", map("type", "string", "description", "分类，如 Java核心"),
+                "status", map("type", "string", "description", "状态，如 APPROVED")
+            ), "required", list()
+        )));
+        tools.add(tool("getTrap", "查看社区陷阱详情", map(
+            "type", "object", "properties", map(
+                "trapId", map("type", "number", "description", "陷阱ID")
+            ), "required", list("trapId")
+        )));
+        tools.add(tool("submitTrap", "提交新的社区陷阱代码", map(
+            "type", "object", "properties", map(
+                "title", map("type", "string", "description", "标题"),
+                "trapCode", map("type", "string", "description", "陷阱代码"),
+                "expectedPitfall", map("type", "string", "description", "坑点描述"),
+                "correctExplanation", map("type", "string", "description", "正确解释"),
+                "knowledgePoint", map("type", "string", "description", "知识点"),
+                "category", map("type", "string", "description", "分类"),
+                "javaVersion", map("type", "string", "description", "Java版本")
+            ), "required", list("title", "trapCode")
+        )));
+        tools.add(tool("voteTrap", "为社区陷阱投票", map(
+            "type", "object", "properties", map(
+                "trapId", map("type", "number", "description", "陷阱ID")
+            ), "required", list("trapId")
+        )));
+        tools.add(tool("getLearningReport", "生成学习报告（周报/月报）", map(
+            "type", "object", "properties", map(
+                "type", map("type", "string", "enum", list("WEEKLY", "MONTHLY"), "description", "报告类型")
+            ), "required", list("type")
+        )));
+        tools.add(tool("getLearningStats", "获取学习统计概览", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("getReportNarrative", "生成AI学习报告叙述分析", map(
+            "type", "object", "properties", map(
+                "type", map("type", "string", "enum", list("WEEKLY", "MONTHLY"), "description", "报告类型")
+            ), "required", list("type")
+        )));
+        tools.add(tool("listCards", "列出所有知识卡片", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("generateCard", "为题目生成知识卡片", map(
+            "type", "object", "properties", map(
+                "questionId", map("type", "number", "description", "题目ID")
+            ), "required", list("questionId")
+        )));
+        tools.add(tool("tutorAssess", "导师自评：答对给拓展，答错给引导", map(
+            "type", "object", "properties", map(
+                "questionId", map("type", "number", "description", "题目ID"),
+                "correct", map("type", "boolean", "description", "是否答对")
+            ), "required", list("questionId", "correct")
+        )));
+        tools.add(tool("listScenarios", "列出所有可用陷阱场景", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("getUserProfile", "查看用户学习画像（统计、薄弱、错误）", map(
+            "type", "object", "properties", map(), "required", list()
+        )));
+        tools.add(tool("updateUserProfile", "更新用户学习画像：修改学习目标、薄弱领域等", map(
+            "type", "object", "properties", map(
+                "weakAreas", map("type", "string", "description", "薄弱领域，多个用逗号分隔"),
+                "skillLevel", map("type", "string", "description", "技能等级"),
+                "learningGoal", map("type", "string", "description", "学习目标，如 成为Java高级工程师")
+            ), "required", list()
+        )));
+        tools.add(tool("getDiscussions", "查看题目讨论", map(
+            "type", "object", "properties", map(
+                "questionId", map("type", "number", "description", "题目ID")
+            ), "required", list("questionId")
+        )));
+        tools.add(tool("addDiscussion", "在题目下添加评论", map(
+            "type", "object", "properties", map(
+                "questionId", map("type", "number", "description", "题目ID"),
+                "content", map("type", "string", "description", "评论内容")
+            ), "required", list("questionId", "content")
+        )));
+        return tools;
+    }
+
+    private static com.cortex.llm.ToolDefinition tool(String name, String desc, Object params) {
+        return new com.cortex.llm.ToolDefinition("function",
+            new com.cortex.llm.ToolFunction(name, desc, params));
+    }
+
+    private static java.util.Map<String, Object> map(Object... kvs) {
+        java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < kvs.length; i += 2) m.put((String) kvs[i], kvs[i + 1]);
+        return m;
+    }
+
+    private static java.util.List<String> list(String... items) {
+        return java.util.List.of(items);
     }
 }

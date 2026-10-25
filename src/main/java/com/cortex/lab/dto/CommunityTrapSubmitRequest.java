@@ -15,4 +15,5 @@ public class CommunityTrapSubmitRequest {
     private String hints;       // JSON格式的提示列表
     private Integer difficulty;
     private String submitter;
+    private String knowledgePath;  // 知识树路径，如 "Redis篇/Redis分布式锁/其他"
 }

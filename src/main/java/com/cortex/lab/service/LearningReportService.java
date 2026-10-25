@@ -244,7 +244,7 @@ public class LearningReportService {
                 dailyLearningMapper.updateById(log);
             }
         } catch (Exception e) {
-            log.warn("记录日常活动失败: {}", e.getMessage());
+            log.error("记录日常活动失败: userId={}", userId, e);
         }
     }
 
@@ -281,7 +281,7 @@ public class LearningReportService {
 
             recordDailyActivity(userId, 1, correct ? 1 : 0, 0, null);
         } catch (Exception e) {
-            log.warn("记录答题失败: {}", e.getMessage());
+            log.error("记录答题失败: userId={}, correct={}", userId, correct, e);
         }
     }
 }

@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import com.cortex.lab.dto.ProjectFileDTO;
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +23,36 @@ import java.util.concurrent.TimeUnit;
 public class SandboxService {
     // 代码沙箱：编译执行 Java 代码和 Maven 项目
 
+    // ─── 安全限制 ──────────────────────────────────────
+    private static final int MAX_LINES = 300;               // 代码行数上限
+    private static final int MAX_BYTES = 100 * 1024;        // 代码大小上限 100KB
+    private static final String SANDBOX_IMAGE = "eclipse-temurin:17-jdk";
+    private static final int COMPILE_TIMEOUT_S = 15;        // 编译超时
+    private static final int RUN_TIMEOUT_S = 10;            // 运行超时
+    private static final int DOCKER_TIMEOUT_S = 30;         // Docker 总超时（编译+运行）
+    // 禁止的危险 API（正则片段，命中即拒绝执行）
+    private static final String[] FORBIDDEN_PATTERNS = {
+            "System\\.exit",
+            "Runtime\\.getRuntime",
+            "Runtime\\.exec",
+            "ProcessBuilder",
+            "\\bexec\\s*\\(",
+            "\\bSocket\\b",
+            "ServerSocket",
+            "DatagramSocket",
+            "URLConnection",
+            "HttpURLConnection",
+            "Files\\.delete",
+            "\\bdeleteIfExists",
+            "\\.delete\\(\\)",
+            "deleteRecursively",
+            "shutdownHook",
+            "SecurityManager",
+            "Unsafe",
+    };
+
     private final Path workDir;
+    private final boolean dockerAvailable;
 
     public SandboxService() {
         try {
@@ -31,10 +61,137 @@ public class SandboxService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to create sandbox directory", e);
         }
+        this.dockerAvailable = checkDockerAvailable();
+        log.info("Sandbox 初始化完成. Docker 容器隔离: {}", dockerAvailable ? "启用" : "不可用(回退本机执行)");
     }
 
-    // 编译并执行单文件 Java 代码
+    private boolean checkDockerAvailable() {
+        try {
+            Process p = new ProcessBuilder("docker", "version", "--format", "{{.Server.Version}}")
+                    .redirectErrorStream(true).start();
+            boolean exited = p.waitFor(5, TimeUnit.SECONDS);
+            return exited && p.exitValue() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    // 编译并执行单文件 Java 代码（含安全限制：行数/大小/危险 API，优先 Docker 隔离）
     public ExecuteResponse execute(String code) {
+        // 1. 行数 / 大小限制
+        if (code == null || code.isBlank()) {
+            return reject("代码不能为空");
+        }
+        if (code.getBytes(StandardCharsets.UTF_8).length > MAX_BYTES) {
+            return reject("代码超过大小限制 (" + (MAX_BYTES / 1024) + "KB)");
+        }
+        if (code.split("\n", -1).length > MAX_LINES) {
+            return reject("代码超过行数限制 (" + MAX_LINES + " 行)");
+        }
+
+        // 2. 危险 API 拦截
+        String banned = findBannedApi(code);
+        if (banned != null) {
+            return reject("检测到禁止使用的 API: " + banned + "（沙箱安全限制，防止恶意代码）");
+        }
+
+        // 3. 执行：优先 Docker 容器隔离，否则回退本机
+        if (dockerAvailable) {
+            return runInDocker(code);
+        }
+        log.warn("Sandbox 未启用 Docker 隔离，回退本机执行（仅限开发环境，禁止用于生产）");
+        return runLocally(code);
+    }
+
+    private ExecuteResponse reject(String message) {
+        ExecuteResponse response = new ExecuteResponse();
+        response.setSuccess(false);
+        response.setExitCode(-1);
+        response.setStderr(message);
+        response.setError(message);
+        return response;
+    }
+
+    /** 扫描代码中的危险 API，返回第一个命中的名称；无命中返回 null */
+    private String findBannedApi(String code) {
+        for (String pattern : FORBIDDEN_PATTERNS) {
+            if (code.matches("(?s).*" + pattern + ".*")) {
+                return pattern.replace("\\b", "").replace("\\s*\\\\(", "");
+            }
+        }
+        return null;
+    }
+
+    /** Docker 容器隔离执行：禁网、限内存 256M、限 CPU 0.5 核、限进程数 100 */
+    private ExecuteResponse runInDocker(String code) {
+        ExecuteResponse response = new ExecuteResponse();
+        String uuid = UUID.randomUUID().toString().substring(0, 8);
+        Path tempDir = null;
+
+        try {
+            tempDir = Files.createDirectory(workDir.resolve(uuid));
+            String className = extractClassName(code);
+            if (className == null) {
+                className = "Main" + uuid;
+                code = code.replaceFirst("(public\\s+)?class\\s+\\w+", "public class " + className);
+            }
+
+            Path javaFile = tempDir.resolve(className + ".java");
+            Files.writeString(javaFile, code, StandardCharsets.UTF_8);
+
+            // 容器内：javac 失败则输出错误并退出；成功则运行
+            String containerName = "cortex-sbx-" + uuid;
+            String cmd = "if javac -encoding UTF-8 " + className + ".java 2> compile_err.txt; then "
+                    + "java -Dfile.encoding=UTF-8 -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -cp . " + className
+                    + "; else cat compile_err.txt; exit 1; fi";
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    "docker", "run", "--rm", "--name", containerName,
+                    "--network", "none",
+                    "--memory", "256m",
+                    "--cpus", "0.5",
+                    "--pids-limit", "100",
+                    "-v", tempDir.toAbsolutePath() + ":/sandbox",
+                    "-w", "/sandbox",
+                    SANDBOX_IMAGE,
+                    "bash", "-c", cmd);
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+
+            StringBuilder output = new StringBuilder();
+            Thread reader = readOutputAsync(process, output);
+            boolean finished = process.waitFor(DOCKER_TIMEOUT_S, TimeUnit.SECONDS);
+
+            if (!finished) {
+                process.destroyForcibly();
+                killContainer(containerName);
+                response.setSuccess(false);
+                response.setExitCode(-1);
+                response.setStderr("执行超时 (" + DOCKER_TIMEOUT_S + "s)");
+                response.setError("Execution timed out");
+                return response;
+            }
+            reader.join(2000);
+
+            response.setSuccess(process.exitValue() == 0);
+            response.setExitCode(process.exitValue());
+            response.setStdout(output.toString());
+            response.setStderr("");
+            response.setError(process.exitValue() != 0 ? "编译或运行错误" : null);
+
+        } catch (Exception e) {
+            log.error("Sandbox docker execution error", e);
+            response.setSuccess(false);
+            response.setExitCode(-1);
+            response.setError(e.getMessage());
+        } finally {
+            deleteTempDir(tempDir);
+        }
+        return response;
+    }
+
+    /** 回退：本机 javac/java 执行（仅开发环境） */
+    private ExecuteResponse runLocally(String code) {
         ExecuteResponse response = new ExecuteResponse();
         String uuid = UUID.randomUUID().toString().substring(0, 8);
         Path tempDir = null;
@@ -61,7 +218,7 @@ public class SandboxService {
             while ((line = compileReader.readLine()) != null) {
                 compileOutput.append(line).append("\n");
             }
-            compileProcess.waitFor(15, TimeUnit.SECONDS);
+            compileProcess.waitFor(COMPILE_TIMEOUT_S, TimeUnit.SECONDS);
 
             if (compileProcess.exitValue() != 0) {
                 response.setSuccess(false);
@@ -76,10 +233,11 @@ public class SandboxService {
             runPb.redirectErrorStream(true);
             Process runProcess = runPb.start();
 
-            if (!runProcess.waitFor(10, TimeUnit.SECONDS)) {
+            if (!runProcess.waitFor(RUN_TIMEOUT_S, TimeUnit.SECONDS)) {
                 runProcess.destroyForcibly();
                 response.setSuccess(false);
                 response.setExitCode(-1);
+                response.setStderr("执行超时 (" + RUN_TIMEOUT_S + "s)");
                 response.setError("Execution timed out (10s)");
                 return response;
             }
@@ -102,17 +260,47 @@ public class SandboxService {
             response.setExitCode(-1);
             response.setError(e.getMessage());
         } finally {
-            if (tempDir != null) {
-                try {
-                    Files.walk(tempDir)
+            deleteTempDir(tempDir);
+        }
+        return response;
+    }
+
+    /** 异步读取子进程输出，避免管道缓冲区写满导致死锁 */
+    private Thread readOutputAsync(Process process, StringBuilder output) {
+        BufferedReader reader = new BufferedReader(
+                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8));
+        Thread t = new Thread(() -> {
+            try {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    output.append(line).append("\n");
+                }
+            } catch (IOException ignored) {
+            }
+        });
+        t.setDaemon(true);
+        t.start();
+        return t;
+    }
+
+    private void killContainer(String containerName) {
+        try {
+            Process p = new ProcessBuilder("docker", "kill", containerName)
+                    .redirectErrorStream(true).start();
+            p.waitFor(3, TimeUnit.SECONDS);
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void deleteTempDir(Path tempDir) {
+        if (tempDir != null) {
+            try {
+                Files.walk(tempDir)
                         .sorted(Comparator.reverseOrder())
                         .map(Path::toFile)
                         .forEach(File::delete);
-                } catch (Exception ignored) {}
-            }
+            } catch (Exception ignored) {}
         }
-
-        return response;
     }
 
     private boolean isWindows() {
@@ -127,12 +315,7 @@ public class SandboxService {
     }
 
     private void cleanup() {
-        try {
-            Files.walk(workDir)
-                .sorted(Comparator.reverseOrder())
-                .map(Path::toFile)
-                .forEach(File::delete);
-        } catch (Exception ignored) {}
+        deleteTempDir(workDir);
     }
 
     // 构建 Maven 项目（编译整个项目目录）

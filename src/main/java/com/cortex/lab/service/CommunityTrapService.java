@@ -28,7 +28,7 @@ public class CommunityTrapService {
     private final QuestionBankMapper questionBankMapper;
     private final LabScenarioMapper labScenarioMapper;
 
-    @PostConstruct
+    // @PostConstruct  // 已禁用自动种子，数据由用户手动管理
     public void seedData() {
         try {
             long count = communityTrapMapper.selectCount(new LambdaQueryWrapper<>());
@@ -73,7 +73,7 @@ public class CommunityTrapService {
 
     // Separate @PostConstruct for lab_scenario seeding (independent check so it still runs
     // even if community_trap table already has data)
-    @PostConstruct
+    // @PostConstruct  // 已禁用自动种子，数据由用户手动管理
     public void seedScenarios() {
         try {
             long scenarioCount = labScenarioMapper.selectCount(
@@ -159,6 +159,7 @@ public class CommunityTrapService {
         entity.setHints(req.getHints());
         entity.setDifficulty(req.getDifficulty() != null ? req.getDifficulty() : 2);
         entity.setSubmitter(req.getSubmitter() != null ? req.getSubmitter() : "anonymous");
+        entity.setKnowledgePath(req.getKnowledgePath());  // 关联知识树路径
         entity.setStatus("PENDING");
         entity.setVoteCount(0);
         entity.setGmtCreate(LocalDateTime.now());

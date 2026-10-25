@@ -19,7 +19,7 @@ function toggleExpand() {
 // 搜索时父节点自动展开，让匹配的子节点可见
 const isExpandedOrAuto = computed(() => expanded.value || isAutoExpanded.value)
 function onSelect() {
-  if (isLeaf) emit('select-node', props.node)
+  emit('select-node', props.node)
 }
 </script>
 <template>
@@ -28,7 +28,7 @@ function onSelect() {
       <span v-if="isLeaf" class="arrow" style="font-size:8px;">○</span>
       <span v-else class="arrow" :class="{ expanded }" style="font-size:10px;">▶</span>
       <span class="icon"></span>
-      <span class="label" @click="onSelect">{{ node.name }}</span>
+      <span class="label" @click.stop="onSelect">{{ node.name }}</span>
       <span v-if="isLeaf" @click.stop="tree.toggleMaster(node.id, !isMastered)" style="font-size:11px;margin-left:auto;cursor:pointer;opacity:0.7;padding:0 4px;">{{ isMastered ? '✅' : '✔' }}</span>
     </div>
     <div v-if="!isLeaf && node.children" class="tree-node-children" :class="{ open: isExpandedOrAuto }">

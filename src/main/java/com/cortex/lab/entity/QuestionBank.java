@@ -23,6 +23,7 @@ public class QuestionBank {
     private String correctExplanation;
     private String hints;
     private String category;
+    private String knowledgePath;   // 知识树路径，如 "Redis篇/Redis分布式锁/其他"
     private Integer difficulty;
     private String status;
     private LocalDateTime gmtCreate;

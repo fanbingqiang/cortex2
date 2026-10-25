@@ -30,8 +30,8 @@ public class NotificationService {
             config.setEmailNotifications(false);
             config.setPushNotifications(false);
             config.setReviewReminder(true);
-            config.setReportWeekly(true);
             config.setReportMonthly(true);
+            config.setAiActiveMode(true);
             config.setGmtCreate(LocalDateTime.now());
             config.setGmtModified(LocalDateTime.now());
             configMapper.insert(config);
@@ -60,6 +60,9 @@ public class NotificationService {
         }
         if (updates.containsKey("reportMonthly")) {
             config.setReportMonthly(Boolean.TRUE.equals(updates.get("reportMonthly")));
+        }
+        if (updates.containsKey("aiActiveMode")) {
+            config.setAiActiveMode(Boolean.TRUE.equals(updates.get("aiActiveMode")));
         }
 
         config.setGmtModified(LocalDateTime.now());

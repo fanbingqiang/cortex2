@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>八股文教学 AI · 聊天</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; height: 100vh; display: flex; flex-direction: column; }
+        .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+        .header h1 { font-size: 16px; color: #3fb950; }
+        .header .status { font-size: 11px; color: #8b949e; }
+
+        .main { display: flex; flex: 1; overflow: hidden; }
+
+        /* 聊天区 */
+        .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+        .messages { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; overflow-anchor: none; }
+        .msg { max-width: 85%; padding: 12px 16px; border-radius: 12px; font-size: 13px; line-height: 1.6; word-break: break-word; }
+        .msg.user { align-self: flex-end; background: #1f6feb; color: #fff; border-bottom-right-radius: 4px; }
+        .msg.ai { align-self: flex-start; background: #21262d; border: 1px solid #30363d; color: #e1e4e8; border-bottom-left-radius: 4px; }
+        .msg.ai pre { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 12px; margin: 8px 0; font-size: 12px; overflow-x: auto; white-space: pre-wrap; font-family: 'Cascadia Code', 'Fira Code', monospace; }
+        .msg.ai code { background: #0d1117; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: 'Cascadia Code', monospace; }
+        .msg.ai pre code { background: none; padding: 0; }
+        .msg.ai h3 { font-size: 14px; margin: 8px 0 4px; color: #e1e4e8; }
+        .msg.ai li { margin: 2px 0 2px 16px; font-size: 13px; }
+        .msg.ai table { border-collapse: collapse; margin: 8px 0; font-size: 12px; width: 100%; }
+        .msg.ai th, .msg.ai td { border: 1px solid #30363d; padding: 4px 8px; text-align: left; }
+        .msg.ai th { background: #161b22; color: #c9d1d9; }
+        .msg.ai p { margin: 4px 0; line-height: 1.5; }
+        .msg.ai strong { color: #58a6ff; }
+        .msg.ai em { color: #8b949e; }
+        .msg.ai ul, .msg.ai ol { margin: 4px 0; padding-left: 20px; }
+        .msg.ai li { margin: 2px 0; }
+
+        .typing { align-self: flex-start; color: #8b949e; font-size: 12px; padding: 8px 16px; display: none; }
+        .typing.visible { display: block; }
+
+        .input-area { border-top: 1px solid #30363d; padding: 12px 16px; display: flex; gap: 8px; background: #161b22; flex-shrink: 0; }
+        .input-area textarea { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; color: #e1e4e8; padding: 10px 14px; font-size: 13px; font-family: inherit; resize: none; min-height: 42px; max-height: 120px; }
+        .input-area textarea:focus { outline: none; border-color: #58a6ff; }
+        .input-area button { background: #238636; color: #fff; border: none; padding: 0 20px; border-radius: 8px; font-size: 14px; cursor: pointer; white-space: nowrap; }
+        .input-area button:hover { background: #2ea043; }
+        .input-area button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .input-area button.fast-answer { background: #da3633; font-size: 12px; padding: 0 12px; }
+        .input-area button.fast-answer:hover { background: #f85149; }
+
+        /* 快捷回复按钮 */
+        .quick-replies { display: flex; gap: 6px; padding: 0 16px 10px; flex-wrap: wrap; flex-shrink: 0; }
+        .quick-reply-btn { background: #21262d; border: 1px solid #30363d; color: #58a6ff; padding: 4px 12px; border-radius: 14px; font-size: 11px; cursor: pointer; white-space: nowrap; transition: all 0.15s; }
+        .quick-reply-btn:hover { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+        /* 右侧面板 */
+        .sidebar { width: 320px; background: #161b22; border-left: 1px solid #30363d; overflow-y: auto; flex-shrink: 0; display: flex; flex-direction: column; gap: 0; }
+        .sidebar .section { border-bottom: 1px solid #30363d; padding: 14px; }
+        .sidebar .section h3 { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+        .sidebar .section h3 .dot { width: 6px; height: 6px; border-radius: 50%; background: #3fb950; }
+        .sidebar textarea { width: 100%; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; color: #e1e4e8; padding: 8px; font-size: 11px; font-family: monospace; resize: vertical; min-height: 60px; }
+        .sidebar textarea:focus { outline: none; border-color: #58a6ff; }
+        .sidebar .btn-sm { background: #21262d; border: 1px solid #30363d; color: #c9d1d9; padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor: pointer; margin-top: 6px; }
+        .sidebar .btn-sm:hover { background: #30363d; }
+        .sidebar .btn-sm.save { background: #1a3a2a; border-color: #3fb950; color: #3fb950; }
+        .sidebar .btn-sm.save:hover { background: #2a4a3a; }
+
+        .prompt-tab { background: #21262d; border: 1px solid #30363d; color: #8b949e; padding: 3px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; }
+        .prompt-tab:hover { background: #30363d; color: #c9d1d9; }
+        .prompt-tab.active { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+
+        .profile-field { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 12px; }
+        .profile-field .label { color: #8b949e; }
+        .profile-field .value { color: #e1e4e8; }
+        .tag { display: inline-block; padding: 1px 8px; border-radius: 8px; font-size: 10px; margin: 2px; }
+        .tag.green { background: #1a3a2a; color: #3fb950; }
+        .tag.red { background: #3a1a1a; color: #f85149; }
+
+        /* 流程追踪 */
+        .pipeline-steps { display: flex; flex-direction: column; gap: 4px; }
+        .pipeline-step { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; background: #0d1117; cursor: pointer; font-size: 11px; }
+        .pipeline-step:hover { background: #161b22; }
+        .pipeline-step .status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+        .status-dot.PENDING { background: #484f58; }
+        .status-dot.RUNNING { background: #d29922; animation: pulse 1s infinite; }
+        .status-dot.SUCCESS { background: #3fb950; }
+        .status-dot.FAILED { background: #f85149; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        .pipeline-step .step-icon { flex-shrink: 0; }
+        .pipeline-step .step-name { flex: 1; color: #c9d1d9; }
+        .pipeline-step .step-time { color: #484f58; font-size: 10px; }
+
+        .sidebar .step-detail { display: none; margin-top: 6px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px; font-size: 11px; max-height: 400px; overflow-y: auto; }
+        .sidebar .step-detail.visible { display: block; }
+        .sidebar .step-detail pre { white-space: pre-wrap; font-family: monospace; font-size: 10px; color: #8b949e; margin: 0; }
+
+        /* 响应式 */
+        @media (max-width: 800px) { .sidebar { display: none; } }
+
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #238636; color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 13px; z-index: 1000; display: none; }
+        .toast.error { background: #da3633; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>八股文教学 AI</h1>
+        <span class="status" id="statusText">在线</span>
+    </div>
+
+    <div class="main">
+        <!-- 聊天区 -->
+        <div class="chat-area">
+            <div class="messages" id="messages">
+                <div class="msg ai" id="welcome">👋 你好！我是八股文教学助手，可以帮你通过代码分析来学习八股文。<br><br>试试说：<b>「我想学 Java 线程池」</b></div>
+            </div>
+            <div class="typing" id="typing">AI 正在思考...</div>
+            <div class="quick-replies" id="quickReplies" style="display:none;"></div>
+            <div class="input-area">
+                <textarea id="chatInput" placeholder="输入消息... 如：我想学 Java 线程池" rows="1" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage()}"></textarea>
+                <button class="fast-answer" id="fastAnswerBtn" onclick="fastAnswer()" style="display:none;" title="快速查看答案">看答案</button>
+                <button id="sendBtn" onclick="sendMessage()">发送</button>
+            </div>
+        </div>
+
+        <!-- 右侧面板 -->
+        <div class="sidebar" id="sidebar">
+            <!-- 提示词管理（Tab 切换） -->
+            <div class="section">
+                <h3><span class="dot"></span> 提示词管理</h3>
+                <div style="display:flex;gap:4px;margin-bottom:6px;flex-wrap:wrap;">
+                    <button class="prompt-tab active" onclick="switchPromptTab('system')">系统</button>
+                    <button class="prompt-tab" onclick="switchPromptTab('intent')">意图</button>
+                    <button class="prompt-tab" onclick="switchPromptTab('exam')">出题</button>
+                    <button class="prompt-tab" onclick="switchPromptTab('diagnose')">诊断</button>
+                    <button class="prompt-tab" onclick="switchPromptTab('teach')">讲解</button>
+                    <button class="prompt-tab" onclick="switchPromptTab('chat')">聊天</button>
+                </div>
+                <textarea id="promptEditor" style="height:200px;font-size:10px;" placeholder="选择上方标签加载提示词..."></textarea>
+                <div style="display:flex;gap:6px;margin-top:4px;">
+                    <button class="btn-sm save" onclick="savePromptTab()">保存当前</button>
+                    <button class="btn-sm" onclick="saveAllPrompts()">全部保存</button>
+                    <button class="btn-sm" onclick="resetPromptTab()">重置</button>
+                </div>
+            </div>
+
+            <!-- 当前知识模块（可编辑） -->
+            <div class="section" id="knowledgeSection">
+                <h3><span class="dot" style="background:#a371f7"></span> 当前知识模块</h3>
+                <div id="knowledgeView">
+                    <div class="profile-field" style="margin-bottom:6px"><span class="label">模块名称</span>
+                        <input id="editKnowledgeTitle2" style="flex:1;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:4px;font-size:12px;border-radius:4px;font-weight:bold;margin-left:8px;" placeholder="如：Java 线程池、Go 并发"/>
+                    </div>
+                    <div id="knowledgeDetail" style="display:none;">
+                        <div style="font-size:11px;color:#8b949e;margin-bottom:4px;">
+                            状态: <span id="kStatus">-</span>
+                            类型: <select id="editCodeType" style="background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:2px 4px;font-size:11px;border-radius:4px;margin-left:4px;">
+                                <option value="correct">正确代码</option><option value="incorrect">错误代码</option>
+                            </select>
+                        </div>
+                        <div id="kScore" style="font-size:11px;color:#8b949e;margin-bottom:4px;"></div>
+                        <div style="font-size:10px;color:#8b949e;margin-top:4px;">题目代码</div>
+                        <textarea id="editQuestionCode" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:6px;font-size:10px;font-family:monospace;border-radius:4px;min-height:80px;resize:vertical;"></textarea>
+                        <div style="font-size:10px;color:#8b949e;margin-top:4px;">问题</div>
+                        <textarea id="editQuestion" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#58a6ff;padding:6px;font-size:11px;border-radius:4px;min-height:40px;resize:vertical;"></textarea>
+                        <div style="font-size:10px;color:#8b949e;margin-top:4px;">参考答案</div>
+                        <textarea id="editReference" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:6px;font-size:10px;font-family:monospace;border-radius:4px;min-height:60px;resize:vertical;"></textarea>
+                        <div style="font-size:10px;color:#8b949e;margin-top:4px;">提示</div>
+                        <input id="editHint" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:4px;font-size:10px;border-radius:4px;"/>
+                    </div>
+                </div>
+                <button class="btn-sm save" id="saveKnowledgeBtn" onclick="saveKnowledge()">保存模块</button>
+            </div>
+
+            <!-- 用户画像（全可编辑） -->
+            <div class="section">
+                <h3><span class="dot" style="background:#58a6ff"></span> 用户画像</h3>
+                <div id="profileView">
+                    <div class="profile-field"><span class="label">用户ID</span><span class="value" id="pUserId">-</span></div>
+                    <div class="profile-field"><span class="label">难度</span>
+                        <select id="pDifficultyInp" style="width:120px;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:2px 6px;font-size:11px;border-radius:4px;">
+                            <option value="easy">简单</option><option value="medium" selected>中等</option><option value="hard">困难</option>
+                        </select>
+                    </div>
+                    <div class="profile-field"><span class="label">总分</span>
+                        <input id="pScoreInp" type="number" min="0" max="100" style="width:80px;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:2px 6px;font-size:11px;border-radius:4px;"/>
+                    </div>
+                    <div style="margin-top:4px"><span style="color:#8b949e;font-size:11px">已掌握：</span>
+                        <input id="pMasteredInp" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#3fb950;padding:4px;font-size:10px;border-radius:4px;" placeholder="逗号分隔，如：线程池,String"/>
+                    </div>
+                    <div style="margin-top:4px"><span style="color:#8b949e;font-size:11px">薄弱点：</span>
+                        <input id="pWeakInp" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#f85149;padding:4px;font-size:10px;border-radius:4px;" placeholder="逗号分隔，如：锁机制,volatile"/>
+                    </div>
+                </div>
+                <button class="btn-sm save" onclick="saveProfile()">保存画像</button>
+            </div>
+
+            <!-- 流程追踪（点击展开详情，可编辑） -->
+            <div class="section">
+                <h3><span class="dot" style="background:#d29922"></span> 流程追踪</h3>
+                <div class="pipeline-steps" id="pipelineSteps">
+                    <div style="color:#484f58;font-size:11px;padding:8px;">等待出题...</div>
+                </div>
+                <div class="step-detail" id="stepDetail"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const USER_ID = 'default';
+        let currentSession = null;
+        let currentPromptTab = 'system';
+        let promptCache = {};
+        let promptDirty = {};
+
+        // 默认提示词
+        const DEFAULT_PROMPTS = {
+            system: '重点考察面试常见陷阱',
+            intent: '根据对话历史和当前消息判断用户意图，只输出一个单词。\n\n当前状态：\n- 有活跃题目：{has_pending}\n- 知识模块：{knowledge_title}\n\n## 对话历史\n{conversation_context}\n\n规则（按优先级判断）：\n1. 如果用户要答案、说"给答案"、"告诉我答案"、"参考答案是什么"、"不会做教我"、"直接讲吧"、"怎么做" → 输出 reveal_answer\n2. 如果用户正在回答题目（分析代码对错、说"我觉得是对的/错的"、讨论代码逻辑、给出具体分析）→ 输出 diagnose\n3. 如果用户想学新知识、出题、练习、换话题、说"再来一题"、"换一个"、"跳过"、"下一题"、"不知道"、"换个话题" → 输出 question\n4. 其他情况（打招呼、闲聊、追问代码细节）→ 输出 chat\n\n只输出一个单词：reveal_answer / diagnose / question / chat',
+            exam: '你是一个八股文出题专家。根据知识点生成引导式代码题。\n\n## 出题规则\n- 代码可能是正确的（分析为什么对），也可能是错误的（找错）\n- 题目难度：{difficulty}\n- 出题偏好：{system_prompt}\n- 用户薄弱点：{weak_points}\n- 用户已掌握：{mastered}\n\n## 当前知识模块\n{message}\n\n## 输出要求\n生成一段代码并提问，**不要直接给答案**，引导学生自己思考。格式如下：\n\n【代码】\n```java\n...代码...\n```\n\n【问题】\n...（引导式提问，让学生分析代码的意图和潜在问题，不要直接揭示答案）...\n\n【代码类型】\ncorrect 或 incorrect\n\n【参考答案】\n...（一句话简洁答案，用于内部存储，不会显示给学生）...\n\n【知识点】\n...（用逗号分隔的关键知识点）...\n\n请直接输出以上格式，不要多余的话。',
+            diagnose: '你是一个八股文教学诊断专家。评估学生对代码题的回答。\n\n## 题目信息\n题目代码：{question_code}\n代码类型：{code_type}\n参考答案：{reference_answer}\n\n## 学生回答\n{user_answer}\n\n## 诊断要求\n评估学生是否真正理解了代码的核心原理，判断：\n1. 回答是否正确\n2. 是否真正理解（不是蒙对的）\n3. 知识盲区是什么\n\n回复格式：\n正确：是/否\n真正理解：是/否\n知识盲区：用逗号分隔\n评分：0-100\n诊断说明：一句话',
+            teach: '你是一个八股文教学专家。根据诊断结果进行教学，尽量少用比喻，直接讲清楚技术本质。\n\n## 知识模块\n{knowledge_title}\n\n## 诊断结果\n{diagnosis}\n\n## 教学要求（按以下结构输出，使用 Markdown）\n\n### 1. 是什么\n用一两句话简洁定义这个概念/技术是什么。\n\n### 2. 痛点\n描述在没有这个技术之前，开发者会遇到什么具体问题/场景。\n\n### 3. 技术解决\n说明这个技术是如何解决上述痛点的，核心机制是什么。\n\n### 4. 综合代码展示\n写一段涵盖该知识模块所有关键知识点的代码，展示这些知识点在复杂交互中如何配合使用。代码可以是错误的（标注出来），让学生分析。\n代码中要体现多个知识点的交叉使用。\n\n### 5. 知识点讲解\n逐个讲解代码中涉及的知识点，结合代码中的具体行号说明。如果某个知识点在综合代码中没有体现，则单独写简单代码片段讲解。\n\n### 6. 总结\n一句话总结核心要点。\n\n### 7. 思路来源\n说明这个知识点出自哪个技术体系（如JVM、Spring、JUC等），为什么面试中会考，以及实际开发中什么场景会用到。让学习者知道这个知识点的"来龙去脉"。\n\n### 8. 下一步学习建议\n根据当前知识模块，推荐1-2个容易混淆的对比知识点、或进阶知识点，简要说明为什么要学它们。同时，如果用户已有已掌握的模块，随机推荐1个进行复习巩固。最后问用户："你想继续深入哪个方向？"\n\n## 注意事项\n- 减少比喻和类比，直接讲技术原理\n- 代码要真实可运行（或明确指出错误在哪）\n- 知识点讲解要结合刚才的代码，不要脱离代码空洞讲解\n- 下一步建议要具体，不要泛泛地说"多练习"',
+            chat: '你是一个编程学习助手。请根据对话历史自然地回复用户。\n\n系统提示词：{system_prompt}\n用户画像：已掌握={mastered}，薄弱点={weak_points}\n\n要求：\n- 结合对话历史理解用户意图，不要脱离上下文自说自话\n- 如果对话中有出过题目，用户追问代码细节时要结合题目代码回答\n- 用中文回复，使用 Markdown 格式\n- 如果是打招呼，可以介绍自己并引导用户说说想学什么',
+        };
+
+        function switchPromptTab(tab) {
+            // 保存当前编辑
+            promptCache[currentPromptTab] = document.getElementById('promptEditor').value;
+            currentPromptTab = tab;
+            // 更新 tab 样式
+            document.querySelectorAll('.prompt-tab').forEach(t => t.classList.remove('active'));
+            event.target.classList.add('active');
+            // 加载新 tab
+            document.getElementById('promptEditor').value = promptCache[tab] || DEFAULT_PROMPTS[tab] || '';
+            // 标记未修改
+            promptDirty[tab] = false;
+        }
+
+        async function savePromptTab() {
+            promptCache[currentPromptTab] = document.getElementById('promptEditor').value;
+            const body = { prompts: { [currentPromptTab]: promptCache[currentPromptTab] } };
+            try {
+                await fetch('/api/prompts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                showToast(`${currentPromptTab} 提示词已保存`);
+            } catch (e) { showToast('保存失败', 'error'); }
+        }
+
+        async function saveAllPrompts() {
+            promptCache[currentPromptTab] = document.getElementById('promptEditor').value;
+            const body = { prompts: promptCache };
+            try {
+                await fetch('/api/prompts', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                showToast('全部提示词已保存');
+            } catch (e) { showToast('保存失败', 'error'); }
+        }
+
+        function resetPromptTab() {
+            if (confirm('确定要重置当前提示词为默认值？')) {
+                document.getElementById('promptEditor').value = DEFAULT_PROMPTS[currentPromptTab] || '';
+                promptCache[currentPromptTab] = DEFAULT_PROMPTS[currentPromptTab] || '';
+            }
+        }
+
+        async function loadPrompts() {
+            try {
+                const resp = await fetch('/api/prompts');
+                const data = await resp.json();
+                if (data.prompts) {
+                    for (const [k, v] of Object.entries(data.prompts)) {
+                        promptCache[k] = v;
+                    }
+                }
+                // 加载当前 tab
+                document.getElementById('promptEditor').value = promptCache[currentPromptTab] || DEFAULT_PROMPTS[currentPromptTab] || '';
+            } catch (e) { /* ignore */ }
+        }
+
+        async function sendMessage() {
+            const inp = document.getElementById('chatInput');
+            const msg = inp.value.trim();
+            if (!msg) return;
+
+            addMessage('user', msg);
+            inp.value = '';
+            inp.style.height = 'auto';
+            hideQuickReplies();
+
+            document.getElementById('typing').classList.add('visible');
+            document.getElementById('sendBtn').disabled = true;
+            document.getElementById('fastAnswerBtn').style.display = 'none';
+            document.getElementById('statusText').textContent = '思考中...';
+
+            // 创建 AI 消息气泡（流式追加）
+            const aiDiv = document.createElement('div');
+            aiDiv.className = 'msg ai';
+            aiDiv.id = 'streamingMsg';
+            document.getElementById('messages').appendChild(aiDiv);
+            scrollToBottom();
+
+            let fullText = '';
+            let action = '';
+
+            try {
+                const resp = await fetch('/api/chat/stream', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        user_id: USER_ID,
+                        message: msg,
+                        system_prompt: promptCache['system'] || '',
+                    })
+                });
+                const reader = resp.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const data = line.slice(6);
+                        try {
+                            const evt = JSON.parse(data);
+                            if (evt.type === 'intent') {
+                                document.getElementById('statusText').textContent = '生成中...';
+                            } else if (evt.type === 'token') {
+                                fullText += evt.content;
+                                aiDiv.innerHTML = renderMarkdown(fullText);
+                            } else if (evt.type === 'done') {
+                                action = evt.action;
+                                if (evt.session_id) {
+                                    // 获取会话详情
+                                    try {
+                                        const sResp = await fetch(`/api/session/${evt.session_id}`);
+                                        const sData = await sResp.json();
+                                        currentSession = sData;
+                                        renderPipeline(currentSession);
+                                        renderKnowledge(currentSession);
+                                    } catch (e) { /* ignore */ }
+                                }
+                                // 刷新画像
+                                try {
+                                    const pResp = await fetch(`/api/profile/${USER_ID}`);
+                                    const pData = await pResp.json();
+                                    renderProfile(pData.profile || {});
+                                } catch (e) { /* ignore */ }
+                            } else if (evt.type === 'suggestions') {
+                                showQuickReplies(evt.items);
+                            }
+                        } catch (e) { /* 跳过非 JSON 行 */ }
+                    }
+                }
+                aiDiv.removeAttribute('id');
+                document.getElementById('statusText').textContent = '在线';
+
+                // 出题后显示"看答案"按钮
+                if (action === 'question') {
+                    document.getElementById('fastAnswerBtn').style.display = 'inline-block';
+                }
+            } catch (e) {
+                aiDiv.innerHTML = renderMarkdown('抱歉，出错了：' + e.message);
+                aiDiv.removeAttribute('id');
+                document.getElementById('statusText').textContent = '错误';
+            }
+
+            document.getElementById('typing').classList.remove('visible');
+            document.getElementById('sendBtn').disabled = false;
+            scrollToBottom();
+        }
+
+        function showQuickReplies(items) {
+            if (!items || items.length === 0) return;
+            const container = document.getElementById('quickReplies');
+            container.innerHTML = '';
+            for (const item of items) {
+                const btn = document.createElement('button');
+                btn.className = 'quick-reply-btn';
+                btn.textContent = item;
+                btn.onclick = () => {
+                    document.getElementById('chatInput').value = item;
+                    sendMessage();
+                };
+                container.appendChild(btn);
+            }
+            container.style.display = 'flex';
+        }
+
+        function hideQuickReplies() {
+            document.getElementById('quickReplies').style.display = 'none';
+            document.getElementById('fastAnswerBtn').style.display = 'none';
+        }
+
+        function fastAnswer() {
+            document.getElementById('chatInput').value = '给答案';
+            sendMessage();
+        }
+
+        function addMessage(role, text) {
+            const div = document.createElement('div');
+            div.className = 'msg ' + role;
+            if (role === 'ai') {
+                div.innerHTML = renderMarkdown(text);
+            } else {
+                div.textContent = text;
+            }
+            document.getElementById('messages').appendChild(div);
+            scrollToBottom();
+        }
+
+        function renderMarkdown(text) {
+            // 清理 【】 标记
+            text = text.replace(/【[^】]*】\s*/g, '');
+            // 清理 多余的 \n 字面量
+            text = text.replace(/\\n/g, '\n');
+            // 用 marked.js 渲染
+            if (typeof marked !== 'undefined') {
+                marked.setOptions({ breaks: true, gfm: true });
+                return marked.parse(text);
+            }
+            // fallback
+            return text.replace(/\n/g, '<br>').replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+        }
+
+        function scrollToBottom() {
+            const msgs = document.getElementById('messages');
+            setTimeout(() => msgs.scrollTop = msgs.scrollHeight, 50);
+        }
+
+        // ─── 右侧面板 ────────────────────────────────────
+
+        function renderPipeline(session) {
+            const steps = session.steps || [];
+            const cfg = {
+                question: { icon: '🎯', name: '出题' },
+                diagnosis: { icon: '🔍', name: '诊断' },
+                teaching: { icon: '📖', name: '讲解' },
+                profile: { icon: '📊', name: '画像' },
+            };
+
+            let html = '';
+            for (const s of steps) {
+                const c = cfg[s.step_id] || { icon: '●', name: s.step_id };
+                html += `
+                <div class="pipeline-step" onclick="showStepDetail('${s.step_id}')">
+                    <span class="status-dot ${s.status}"></span>
+                    <span class="step-icon">${c.icon}</span>
+                    <span class="step-name">${c.name}</span>
+                    <span class="step-time">${s.duration_ms ? s.duration_ms+'ms' : ''}</span>
+                </div>`;
+            }
+            if (!html) html = '<div style="color:#484f58;font-size:11px;padding:8px;">等待出题...</div>';
+            document.getElementById('pipelineSteps').innerHTML = html;
+        }
+
+        function renderKnowledge(session) {
+            if (!session) return;
+            document.getElementById('editKnowledgeTitle2').value = session.knowledge_title || '';
+            document.getElementById('editCodeType').value = session.code_type || 'incorrect';
+            document.getElementById('kStatus').textContent = session.status || '-';
+            document.getElementById('kScore').textContent = session.mastery_score ? `评分: ${session.mastery_score}` : '';
+            document.getElementById('editQuestionCode').value = session.question_code || '';
+            document.getElementById('editQuestion').value = session.question || '';
+            document.getElementById('editReference').value = session.reference_answer || '';
+            document.getElementById('editHint').value = session.hint || '';
+            document.getElementById('knowledgeDetail').style.display = 'block';
+            document.getElementById('saveKnowledgeBtn').style.display = 'block';
+        }
+
+        async function saveKnowledge() {
+            const title = document.getElementById('editKnowledgeTitle2').value.trim();
+            if (!title) { showToast('请输入模块名称', 'error'); return; }
+
+            const body = {
+                knowledge_title: title,
+                code_type: document.getElementById('editCodeType')?.value,
+                question_code: document.getElementById('editQuestionCode')?.value,
+                question: document.getElementById('editQuestion')?.value,
+                reference_answer: document.getElementById('editReference')?.value,
+                hint: document.getElementById('editHint')?.value,
+            };
+
+            if (currentSession) {
+                try {
+                    const resp = await fetch(`/api/session/${currentSession.session_id}`, {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await resp.json();
+                    currentSession = data.session;
+                    renderPipeline(currentSession);
+                    showToast('模块已保存');
+                } catch (e) { showToast('保存失败', 'error'); }
+            } else {
+                // 无会话时，保存到提示词缓存作为下次出题目标
+                promptCache['custom_module'] = title;
+                showToast('模块已设置（下次出题时生效）');
+            }
+        }
+
+        function showStepDetail(stepId) {
+            if (!currentSession) return;
+            const step = (currentSession.steps || []).find(s => s.step_id === stepId);
+            if (!step) return;
+            const detail = document.getElementById('stepDetail');
+            detail.classList.add('visible');
+            detail.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                    <strong>${step.step_name}</strong>
+                    <span style="font-size:10px;color:#8b949e;">[${step.status}] ${step.duration_ms}ms</span>
+                </div>
+                <div style="font-size:10px;color:#8b949e;margin-top:4px;">输入</div>
+                <textarea id="stepInputEdit" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:6px;font-size:10px;font-family:monospace;border-radius:4px;min-height:60px;resize:vertical;">${escapeHtml(step.input || '')}</textarea>
+                <div style="font-size:10px;color:#8b949e;margin-top:4px;">输出</div>
+                <textarea id="stepOutputEdit" style="width:100%;background:#0d1117;border:1px solid #30363d;color:#e1e4e8;padding:6px;font-size:10px;font-family:monospace;border-radius:4px;min-height:80px;resize:vertical;">${escapeHtml(step.output || '')}</textarea>
+                <button class="btn-sm save" onclick="saveStepDetail('${stepId}')" style="margin-top:6px;">保存</button>
+                <button class="btn-sm" onclick="closeStepDetail()" style="margin-left:4px;">关闭</button>
+            `;
+        }
+
+        function closeStepDetail() {
+            document.getElementById('stepDetail').classList.remove('visible');
+        }
+
+        async function saveStepDetail(stepId) {
+            if (!currentSession) return;
+            const input = document.getElementById('stepInputEdit')?.value;
+            const output = document.getElementById('stepOutputEdit')?.value;
+            try {
+                await fetch(`/api/session/${currentSession.session_id}/step/${stepId}/input`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ input: input || '' })
+                });
+                await fetch(`/api/session/${currentSession.session_id}/step/${stepId}/output`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ output: output || '' })
+                });
+                showToast('步骤已保存');
+            } catch (e) { showToast('保存失败', 'error'); }
+        }
+
+        function renderProfile(profile) {
+            document.getElementById('pUserId').textContent = profile.user_id || '-';
+            document.getElementById('pDifficultyInp').value = profile.preferred_difficulty || 'medium';
+            document.getElementById('pScoreInp').value = profile.total_score || 0;
+            document.getElementById('pMasteredInp').value = (profile.mastered || []).join(', ');
+            document.getElementById('pWeakInp').value = (profile.weak_points || []).join(', ');
+        }
+
+        async function saveProfile() {
+            const mastered = document.getElementById('pMasteredInp').value.split(',').map(s => s.trim()).filter(s => s);
+            const weak = document.getElementById('pWeakInp').value.split(',').map(s => s.trim()).filter(s => s);
+            const body = {
+                difficulty: document.getElementById('pDifficultyInp').value,
+                mastered: mastered,
+                weak_points: weak,
+                total_score: parseInt(document.getElementById('pScoreInp').value) || 0,
+            };
+            try {
+                const resp = await fetch(`/api/profile/${USER_ID}`, {
+                    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const data = await resp.json();
+                if (data.profile) renderProfile(data.profile);
+                showToast('画像已保存');
+            } catch (e) { showToast('保存失败', 'error'); }
+        }
+
+        async function refreshProfile() {
+            try {
+                const resp = await fetch(`/api/profile/${USER_ID}`);
+                const data = await resp.json();
+                renderProfile(data.profile);
+                if (data.system_prompt) {
+                    document.getElementById('systemPromptInp').value = data.system_prompt;
+                }
+                showToast('画像已刷新');
+            } catch (e) { showToast('刷新失败', 'error'); }
+        }
+
+        function showToast(msg, type = '') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = 'toast' + (type === 'error' ? ' error' : '');
+            t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 2000);
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // 自动调整输入框高度
+        document.getElementById('chatInput').addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+
+        // 加载初始画像
+        refreshProfile();
+        loadPrompts();
+    </script>
+</body>
+</html>

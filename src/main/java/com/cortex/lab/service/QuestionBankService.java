@@ -10,7 +10,7 @@ import com.cortex.lab.mapper.KnowledgeCardMapper;
 import com.cortex.lab.mapper.LabScenarioMapper;
 import com.cortex.lab.mapper.QuestionBankMapper;
 import com.cortex.lab.mapper.QuestionProgressMapper;
-import com.cortex.llm.LlmClient;
+import com.cortex.lab.service.PythonAIService;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -28,23 +28,29 @@ public class QuestionBankService {
 
     private final QuestionBankMapper questionBankMapper;
     private final QuestionProgressMapper progressMapper;
-    private final LlmClient llmClient;
+    private final PythonAIService pythonAIService;
+    private final com.cortex.lab.mapper.QuestionOptionMapper questionOptionMapper;
+    private final com.cortex.lab.mapper.GuidanceSessionMapper guidanceSessionMapper;
     private final KnowledgeCardMapper cardMapper;
     private final LabScenarioMapper labScenarioMapper;
 
     public QuestionBankService(QuestionBankMapper questionBankMapper,
                                 QuestionProgressMapper progressMapper,
-                                LlmClient llmClient,
+                                PythonAIService pythonAIService,
                                 KnowledgeCardMapper cardMapper,
-                                LabScenarioMapper labScenarioMapper) {
+                                LabScenarioMapper labScenarioMapper,
+                                com.cortex.lab.mapper.QuestionOptionMapper questionOptionMapper,
+                                com.cortex.lab.mapper.GuidanceSessionMapper guidanceSessionMapper) {
         this.questionBankMapper = questionBankMapper;
         this.progressMapper = progressMapper;
-        this.llmClient = llmClient;
+        this.pythonAIService = pythonAIService;
         this.cardMapper = cardMapper;
         this.labScenarioMapper = labScenarioMapper;
+        this.questionOptionMapper = questionOptionMapper;
+        this.guidanceSessionMapper = guidanceSessionMapper;
     }
 
-    @PostConstruct
+    // @PostConstruct  // 已禁用自动种子，数据由用户手动管理
     public void seedBuiltinQuestions() {
         try {
             long count = questionBankMapper.selectCount(null);
@@ -166,7 +172,7 @@ public class QuestionBankService {
         }
         String prompt = GENERATE_PROMPT.formatted(userQuestion);
         try {
-            String result = llmClient.chatSimple(prompt);
+            String result = pythonAIService.chatSimple(prompt);
             result = com.cortex.util.JsonUtils.cleanJson(result);
             QuestionDto dto = JSON.parseObject(result, QuestionDto.class);
 
@@ -192,13 +198,14 @@ public class QuestionBankService {
     }
 
     public QuestionDto importQuestion(String title, String description, String trapCode,
-                                       String expectedPitfall, String correctExplanation) {
+                                       String expectedPitfall, String correctExplanation, String knowledgePath) {
         QuestionBank entity = new QuestionBank();
         entity.setTitle(title);
         entity.setDescription(description);
         entity.setTrapCode(trapCode);
         entity.setExpectedPitfall(expectedPitfall);
         entity.setCorrectExplanation(correctExplanation);
+        entity.setKnowledgePath(knowledgePath);  // 关联知识树路径
         entity.setCategory("用户自定义");
         entity.setDifficulty(2);
         entity.setStatus("ACTIVE");
@@ -208,7 +215,7 @@ public class QuestionBankService {
         return toDto(entity);
     }
 
-    public int batchImport(String text, String category) {
+    public int batchImport(String text, String category, String knowledgePath) {
         if (text == null || text.isBlank()) return 0;
         String[] blocks = text.split("(?m)^---\\s*$");
         int count = 0;
@@ -266,6 +273,7 @@ public class QuestionBankService {
                 q.setExpectedPitfall(expectedPitfall);
                 q.setCorrectExplanation(correctExplanation);
                 q.setCategory(category != null ? category : "批量导入");
+                q.setKnowledgePath(knowledgePath);  // 关联知识树路径
                 q.setDifficulty(2);
                 q.setStatus("ACTIVE");
                 q.setGmtCreate(LocalDateTime.now());
@@ -304,6 +312,74 @@ public class QuestionBankService {
             if (longer.contains(shorter)) return true;
         }
         return false;
+    }
+
+    // ==================== 选择题选项 ====================
+
+    public List<com.cortex.lab.entity.QuestionOption> getOptions(Long questionId) {
+        return questionOptionMapper.selectList(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.cortex.lab.entity.QuestionOption>()
+                .eq(com.cortex.lab.entity.QuestionOption::getQuestionId, questionId)
+                .orderByAsc(com.cortex.lab.entity.QuestionOption::getOrderNum)
+        );
+    }
+
+    // ==================== 引导会话 ====================
+
+    public com.cortex.lab.entity.GuidanceSession getGuidance(String userId, Long questionId) {
+        com.cortex.lab.entity.GuidanceSession session = guidanceSessionMapper.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.cortex.lab.entity.GuidanceSession>()
+                .eq(com.cortex.lab.entity.GuidanceSession::getUserId, userId)
+                .eq(com.cortex.lab.entity.GuidanceSession::getQuestionId, questionId)
+                .last("LIMIT 1")
+        );
+        if (session == null) {
+            session = new com.cortex.lab.entity.GuidanceSession();
+            session.setUserId(userId);
+            session.setQuestionId(questionId);
+            session.setStage("QUIZ");
+            session.setHintCount(0);
+            session.setCorrectCount(0);
+            session.setWrongCount(0);
+            session.setResolved(false);
+            guidanceSessionMapper.insert(session);
+        }
+        return session;
+    }
+
+    /** 提交答案：返回引导话术 */
+    public String submitAnswer(String userId, Long questionId, String optionLabel) {
+        com.cortex.lab.entity.GuidanceSession session = getGuidance(userId, questionId);
+        com.cortex.lab.entity.QuestionOption selected = questionOptionMapper.selectOne(
+            new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<com.cortex.lab.entity.QuestionOption>()
+                .eq(com.cortex.lab.entity.QuestionOption::getQuestionId, questionId)
+                .eq(com.cortex.lab.entity.QuestionOption::getOptionLabel, optionLabel)
+                .last("LIMIT 1")
+        );
+        if (selected == null) return "无效选项。";
+
+        session.setSelectedOption(optionLabel);
+        if (Boolean.TRUE.equals(selected.getIsCorrect())) {
+            session.setCorrectCount(session.getCorrectCount() + 1);
+            session.setStage("MASTERED");
+            session.setResolved(true);
+            guidanceSessionMapper.updateById(session);
+            return "答对了！" + (selected.getGuidance() != null ? selected.getGuidance() : "");
+        }
+
+        session.setWrongCount(session.getWrongCount() + 1);
+        int hintCount = session.getHintCount() + 1;
+        session.setHintCount(hintCount);
+        if (hintCount >= 2) {
+            session.setStage("REVEAL");
+        } else {
+            session.setStage(hintCount == 1 ? "FIRST_HINT" : "SECOND_HINT");
+        }
+        guidanceSessionMapper.updateById(session);
+
+        String guidance = selected.getGuidance();
+        if (guidance != null) return guidance;
+        return "不对，再想想。" + (hintCount >= 2 ? " 要不要看看正确答案？" : " 注意观察代码里的细节。");
     }
 
     public void deleteQuestion(Long id) {
@@ -412,7 +488,7 @@ public class QuestionBankService {
 
         String prompt = CARD_GENERATE_PROMPT.formatted(q.getTitle(), q.getExpectedPitfall(), q.getCorrectExplanation());
         try {
-            String result = llmClient.chatSimple(prompt);
+            String result = pythonAIService.chatSimple(prompt);
             result = com.cortex.util.JsonUtils.cleanJson(result);
             CardGenResponse gen = JSON.parseObject(result, CardGenResponse.class);
 

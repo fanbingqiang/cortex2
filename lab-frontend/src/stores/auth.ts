@@ -3,9 +3,19 @@ import { ref, computed } from 'vue'
 import { authApi } from '@/api/client'
 import type { AuthResponse } from '@/types'
 
+// 匿名用户使用持久化的 session UUID，保证同一浏览器匿名对话不丢失
+function getAnonymousId(): string {
+  let id = localStorage.getItem('anonymous_session_id')
+  if (!id) {
+    id = 'anon_' + crypto.randomUUID()
+    localStorage.setItem('anonymous_session_id', id)
+  }
+  return id
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const token = ref(localStorage.getItem('auth_token') || '')
-  const userId = ref(localStorage.getItem('user_id') || 'anonymous')
+  const userId = ref(localStorage.getItem('user_id') || getAnonymousId())
   const username = ref(localStorage.getItem('username') || '')
   const role = ref(localStorage.getItem('role') || '')
   const isLoggedIn = computed(() => !!token.value)
@@ -29,7 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
   function logout() {
     authApi.post('/logout', {}).catch(() => {})
-    token.value = ''; userId.value = 'anonymous'; username.value = ''; role.value = ''
+    token.value = ''; userId.value = getAnonymousId(); username.value = ''; role.value = ''
     localStorage.removeItem('auth_token'); localStorage.removeItem('user_id'); localStorage.removeItem('username'); localStorage.removeItem('role')
   }
   return { token, userId, username, role, isLoggedIn, isAdmin, login, register, logout }

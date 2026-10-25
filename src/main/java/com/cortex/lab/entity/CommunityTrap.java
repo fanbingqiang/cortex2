@@ -12,6 +12,7 @@ public class CommunityTrap {
     private Long id;
     private String title;
     private String knowledgePoint;
+    private String knowledgePath;   // 知识树路径，如 "Redis篇/Redis分布式锁/其他"
     private String category;
     private String javaVersion;
     private String trapCode;

@@ -1,10 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, inject } from 'vue'
 import { labApi } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { useRouter } from 'vue-router'
+import { SHOW_TOAST } from '@/symbols'
 import type { CommunityTrapDto, CommunityTrapSubmitRequest, ApiResponse } from '@/types'
 
 const auth = useAuthStore()
+const router = useRouter()
+const showToast = inject(SHOW_TOAST) as (msg: string) => void
 
 const traps = ref<CommunityTrapDto[]>([])
 const selectedTrap = ref<CommunityTrapDto | null>(null)
@@ -79,46 +83,17 @@ async function vote(trapId: number) {
   }
 }
 
-/** 审批通过（管理员） */
-async function approve(trapId: number) {
-  const res = await labApi.post<null>('/community/traps/' + trapId + '/approve')
-  if (res.code === 200) {
-    if (selectedTrap.value) selectedTrap.value.status = 'APPROVED'
-    const found = traps.value.find(t => t.id === trapId)
-    if (found) found.status = 'APPROVED'
-  }
+/** 去实战：把问题/代码加载到实战练习编辑器 */
+function goPractice(trap: CommunityTrapDto) {
+  router.push('/practice')
+  setTimeout(() => {
+    window.dispatchEvent(new CustomEvent('load-code', {
+      detail: { code: trap.trapCode || '', title: trap.title, knowledgePoint: trap.knowledgePoint || trap.title },
+    }))
+  }, 100)
 }
 
-/** 审批拒绝（管理员） */
-async function reject(trapId: number) {
-  if (!confirm('确定拒绝该陷阱？')) return
-  const res = await labApi.post<null>('/community/traps/' + trapId + '/reject')
-  if (res.code === 200) {
-    if (selectedTrap.value) selectedTrap.value.status = 'REJECTED'
-    const found = traps.value.find(t => t.id === trapId)
-    if (found) found.status = 'REJECTED'
-  }
-}
-
-/** 删除陷阱（管理员） */
-async function deleteTrap(trapId: number) {
-  if (!confirm('确定删除该陷阱？')) return
-  const res = await labApi.post<null>('/community/traps/' + trapId + '/delete')
-  if (res.code === 200) {
-    selectedTrap.value = null
-    traps.value = traps.value.filter(t => t.id !== trapId)
-  }
-}
-
-/** 整合到题库 */
-async function integrate(trapId: number) {
-  const res = await labApi.post<null>('/community/traps/' + trapId + '/integrate')
-  if (res.code === 200) {
-    alert('已成功整合到题库')
-  }
-}
-
-/** 提交新陷阱 */
+/** 提交新问题（简化：只提问题，代码可选） */
 async function submitTrap() {
   submitError.value = ''
   submitting.value = true
@@ -128,6 +103,7 @@ async function submitTrap() {
       showSubmitModal.value = false
       resetSubmitForm()
       await loadTraps()
+      showToast('提交成功，等待管理员审核')
     } else {
       submitError.value = res.message || '提交失败'
     }
@@ -199,7 +175,7 @@ onMounted(() => {
       <div class="left-panel-inner">
         <div class="left-header">
           <span class="left-title">陷阱社区</span>
-          <button class="btn btn-primary btn-sm" @click="showSubmitModal = true">+ 提交陷阱</button>
+          <button class="btn btn-primary btn-sm" @click="showSubmitModal = true">+ 提交问题</button>
         </div>
 
         <!-- 版本筛选 -->
@@ -290,18 +266,18 @@ onMounted(() => {
           <span>票数: {{ selectedTrap.voteCount }}</span>
         </div>
 
-        <div class="detail-section">
-          <div class="detail-section-label">陷阱代码</div>
+        <div v-if="selectedTrap.trapCode" class="detail-section">
+          <div class="detail-section-label">相关代码</div>
           <pre class="code-block"><code>{{ esc(selectedTrap.trapCode) }}</code></pre>
         </div>
 
         <div v-if="selectedTrap.expectedPitfall" class="detail-section">
-          <div class="detail-section-label">坑点分析</div>
+          <div class="detail-section-label">问题描述</div>
           <div class="detail-text">{{ selectedTrap.expectedPitfall }}</div>
         </div>
 
         <div v-if="selectedTrap.correctExplanation" class="detail-section">
-          <div class="detail-section-label">正确解释</div>
+          <div class="detail-section-label">解答</div>
           <div class="detail-text">{{ selectedTrap.correctExplanation }}</div>
         </div>
 
@@ -315,97 +291,41 @@ onMounted(() => {
             {{ selectedTrap.voteCount > 0 ? '投票 (' + selectedTrap.voteCount + ')' : '投票' }}
           </button>
           <button
-            v-if="selectedTrap.status === 'PENDING'"
-            class="btn btn-success btn-sm"
-            @click="approve(selectedTrap.id)"
-          >审批通过</button>
-          <button
-            v-if="selectedTrap.status === 'PENDING'"
-            class="btn btn-danger btn-sm"
-            @click="reject(selectedTrap.id)"
-          >审核不通过</button>
-          <button
             v-if="selectedTrap.status === 'APPROVED'"
             class="btn btn-primary btn-sm"
-            @click="integrate(selectedTrap.id)"
-          >整合到题库</button>
-          <button
-            class="btn btn-ghost btn-sm"
-            style="color:var(--danger);"
-            @click="deleteTrap(selectedTrap.id)"
-          >删除</button>
+            @click="goPractice(selectedTrap)"
+          >▶ 去实战练习</button>
         </div>
       </div>
     </div>
 
-    <!-- 提交陷阱弹窗 -->
+    <!-- 提交问题弹窗 -->
     <div v-if="showSubmitModal" class="modal-overlay" @click.self="showSubmitModal = false">
       <div class="modal-box">
         <button class="modal-close" @click="showSubmitModal = false">&times;</button>
-        <h3 style="margin: 0 0 16px; font-size: 16px;">提交陷阱代码</h3>
+        <h3 style="margin: 0 0 16px; font-size: 16px;">提交问题</h3>
 
         <div class="submit-form">
           <div class="form-row">
-            <label>标题</label>
-            <input v-model="submitForm.title" placeholder="请输入标题" />
+            <label>问题标题</label>
+            <input v-model="submitForm.title" placeholder="如: 缓存击穿是什么？" />
           </div>
           <div class="form-row">
-            <label>知识点</label>
-            <input v-model="submitForm.knowledgePoint" placeholder="如: HashMap" />
-          </div>
-          <div class="form-row form-row-half">
-            <div class="form-field">
-              <label>分类</label>
-              <select v-model="submitForm.category">
-                <option value="Java核心">Java核心</option>
-                <option value="Spring项目">Spring项目</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label>Java 版本</label>
-              <select v-model="submitForm.javaVersion">
-                <option value="Java 8">Java 8</option>
-                <option value="Java 11">Java 11</option>
-                <option value="Java 17">Java 17</option>
-                <option value="Java 21">Java 21</option>
-              </select>
-            </div>
+            <label>所属知识点</label>
+            <input v-model="submitForm.knowledgePoint" placeholder="如: Redis 缓存" />
           </div>
           <div class="form-row">
-            <label>陷阱代码</label>
+            <label>问题描述 <span style="color:var(--danger);">*</span></label>
+            <textarea v-model="submitForm.expectedPitfall" placeholder="描述你的问题，或写出你认为有问题的代码片段" rows="5"></textarea>
+          </div>
+          <div class="form-row">
+            <label>相关代码（可选）</label>
             <textarea
               v-model="submitForm.trapCode"
-              placeholder="请粘贴 Java 代码..."
-              rows="6"
+              placeholder="粘贴相关代码，方便他人分析"
+              rows="5"
               class="code-textarea"
             ></textarea>
-          </div>
-          <div class="form-row">
-            <label>坑点分析</label>
-            <textarea v-model="submitForm.expectedPitfall" placeholder="解释这段代码有什么陷阱" rows="3"></textarea>
-          </div>
-          <div class="form-row">
-            <label>正确解释</label>
-            <textarea v-model="submitForm.correctExplanation" placeholder="正确结果和原因" rows="3"></textarea>
-          </div>
-          <div class="form-row">
-            <label>提示</label>
-            <textarea v-model="submitForm.hints" placeholder="给其他学习者的提示" rows="2"></textarea>
-          </div>
-          <div class="form-row">
-            <label>难度 (1-5)</label>
-            <div class="difficulty-selector">
-              <span
-                v-for="i in 5"
-                :key="i"
-                class="star-option"
-                :class="{ active: i <= (submitForm.difficulty || 0) }"
-                @click="submitForm.difficulty = i"
-              >★</span>
-              <span style="margin-left: 8px; font-size: 12px; color: var(--muted);">
-                {{ submitForm.difficulty || 0 }}/5
-              </span>
-            </div>
           </div>
           <div v-if="submitError" class="submit-error">{{ submitError }}</div>
           <div class="form-actions">

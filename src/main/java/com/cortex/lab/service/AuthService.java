@@ -86,6 +86,10 @@ public class AuthService {
             throw new RuntimeException("密码错误");
         }
 
+        if ("BANNED".equals(user.getStatus())) {
+            throw new RuntimeException("账号已被封禁，请联系管理员");
+        }
+
         user.setLastLoginTime(LocalDateTime.now());
         user.setGmtModified(LocalDateTime.now());
         userMapper.updateById(user);

@@ -1,110 +1,77 @@
-# Cortex — Java 学习实验室 & AI 编程导师
+﻿# Cortex2 — Java 后端面试学习平台
 
-基于 Spring Boot 3 + Vue 3 的全栈 Java 学习平台，集成 AI 苏格拉底导师、知识树、陷阱代码练习、社区分享。
+基于 Spring Boot + Vue 3 + Python AI 的全栈学习平台，提供知识树、陷阱代码、AI 导师、题库练习等功能。
 
-## 技术栈
+## 架构
 
-- **后端**: Java 17, Spring Boot 3.2.5, MyBatis-Plus 3.5.5
-- **前端**: Vue 3 + TypeScript + CodeMirror 6
-- **数据库**: MySQL 8.0 (Docker)
-- **AI**: DeepSeek / OpenAI 兼容 API，流式 SSE
-- **构建**: Maven, Docker Compose
+```
+Vue 3 前端 (5173)  ──→  Java 后端 (8081)  ──→  MySQL (3306)
+                              │
+                              └──→  Python AI 服务 (8001)  ──→  DeepSeek API
+```
+
+- **Java 后端**：用户认证、数据库操作、所有业务 API
+- **Python AI 服务**：仅负责 LLM 调用、多 Key 池管理、上下文压缩
+- **Vue 3 前端**：全部页面和交互
 
 ## 快速启动
 
-```bash
-# 1. 配置 API Key
-cp .env.example .env
-# 编辑 .env 填入你的 LLM_API_KEY
+### 1. 启动 MySQL
 
-# 2. 一键启动（MySQL + Redis + 应用）
-docker compose up --build -d
+确保 MySQL 8.0 已运行在 3306 端口，数据库名 `cortex2`。
 
-# 3. 访问
-# http://localhost:8081/lab/index.html
-# Swagger: http://localhost:8081/swagger-ui.html
+### 2. 启动 Python AI 服务
+
+```powershell
+cd ai-assistant-py\agent-engine-service
+pip install -r requirements.txt
+python main.py
+# 运行在 http://localhost:8001
 ```
+
+### 3. 启动 Java 后端
+
+```powershell
+cd cortex2
+mvn spring-boot:run
+# 运行在 http://localhost:8081
+```
+
+### 4. 启动前端
+
+```powershell
+cd lab-frontend
+npm install
+npm run dev
+# 运行在 http://localhost:5173
+```
+
+### 5. 访问
+
+打开浏览器访问 **http://localhost:5173/lab/**
+
+## 功能模块
+
+- **知识树**：9 大模块（Redis、MySQL、Spring、微服务、消息中间件、Java集合、并发编程、JVM、企业场景），每个节点可生成陷阱代码练习
+- **AI 导师**：苏格拉底式教学，通过陷阱代码引导学习，支持流式对话
+- **题库练习**：选择题 + 代码题，按知识树路径分类
+- **知识卡片**：学习笔记，AI 自动生成知识点摘要，支持编辑和删除
+- **社区陷阱**：用户提交踩坑案例，含投票和审核
+- **个人中心**：学习画像（薄弱点/已掌握），支持自定义修改
+- **后台管理**：管理员可见，包含仪表盘、Prompt 管理、流程追踪、优化建议、用户管理
 
 ## 项目结构
 
 ```
-src/main/java/com/cortex/
-├── CortexApplication.java          # 启动入口
-├── config/
-│   ├── LlmConfig.java              # LLM 客户端配置
-│   ├── WebConfig.java              # CORS 配置
-│   ├── OpenApiConfig.java          # Swagger/OpenAPI
-│   └── GlobalExceptionHandler.java # 全局异常处理
-├── auth/
-│   ├── JwtAuthFilter.java          # JWT 认证过滤器
-│   └── JwtService.java             # JWT 工具
-├── engine/
-│   ├── CortexTaskExecutor.java     # 多智能体任务执行引擎
-│   ├── TaskDecomposer.java         # LLM 任务分解
-│   └── TaskEventService.java       # SSE 事件推送
-├── llm/
-│   ├── LlmClient.java              # OpenAI 兼容 HTTP 客户端（流式）
-│   ├── LlmRequest.java             # 请求体构建
-│   └── LlmResponse.java            # 响应解析
-├── lab/
-│   ├── controller/
-│   │   ├── LabController.java      # 主控制器
-│   │   ├── AuthController.java     # 用户认证
-│   │   └── ExportController.java   # 数据导出
-│   ├── service/
-│   │   ├── AssistantService.java   # AI 助手（流式对话）
-│   │   ├── DialogueService.java    # 场景对话
-│   │   ├── KnowledgeTreeService.java    # Java 知识树
-│   │   ├── KnowledgeCardService.java    # 知识卡片
-│   │   ├── QuestionBankService.java     # 题库管理
-│   │   ├── CommunityTrapService.java    # 社区陷阱
-│   │   ├── SandboxService.java          # 代码沙箱
-│   │   ├── SpringProjectService.java    # Spring 项目生成
-│   │   ├── PlatformFeatureService.java  # 平台功能调度
-│   │   ├── LearningReportService.java   # 学习报告
-│   │   ├── TutorService.java            # 导师点评
-│   │   ├── ScenarioService.java         # 场景管理
-│   │   ├── DiscussionService.java       # 讨论功能
-│   │   └── NotificationService.java     # 通知配置
-│   ├── dto/                        # 数据传输对象
-│   ├── entity/                     # 实体类
-│   └── mapper/                     # MyBatis Mapper
-├── controller/
-│   └── CortexController.java       # 多智能体任务 API
-├── service/
-│   └── MemoryService.java          # 记忆服务
-├── entity/                         # 核心实体
-├── mapper/                         # 核心 Mapper
-└── util/
-    └── JsonUtils.java              # JSON 清理工具
-
-lab-frontend/                       # Vue 3 前端源码
-├── src/
-│   ├── components/                 # 组件
-│   ├── views/                      # 页面
-│   ├── stores/                     # Pinia 状态
-│   ├── composables/                # 组合式函数
-│   └── api/                        # HTTP 客户端
-└── ...
+cortex2/
+├── src/main/java/com/cortex/   # Java 后端
+│   ├── lab/controller/         # API 控制器
+│   ├── lab/service/            # 业务服务
+│   ├── lab/entity/             # 数据库实体
+│   ├── lab/mapper/             # MyBatis Mapper
+│   └── auth/                   # JWT 认证
+├── ai-assistant-py/            # Python AI 服务
+│   └── agent-engine-service/   # LLM 调用、Key 池、上下文压缩
+└── lab-frontend/               # Vue 3 前端
+    └── src/views/              # 页面组件
 ```
-
-## 功能模块
-
-### 1. AI 苏格拉底导师
-知识树节点生成陷阱代码，流式对话引导学习者发现代码问题，渐进式提示，不直接给答案。
-
-### 2. 知识树
-覆盖 Java 核心、集合框架、并发编程、JVM、Spring 等 18 个分类、150+ 知识点节点，每个节点可生成可运行的陷阱代码。
-
-### 3. 代码沙箱 & 黑板
-中间面板是代码编辑器（CodeMirror 6），AI 通过 action 把代码加载到黑板，支持编译执行、断点练习。
-
-### 4. 社区陷阱
-用户提交踩坑案例，社区投票审核，审核通过同步到场景库，支持 UGC 积累。
-
-### 5. 学习报告 & 复习
-AI 生成学习报告，间隔重复复习提醒，薄弱领域分析。
-
-## 设计文档
-
-- [链路测试场景设计](链路测试场景设计.txt) — 6 个全链路集成测试场景

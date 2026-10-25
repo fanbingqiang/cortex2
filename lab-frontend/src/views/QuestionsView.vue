@@ -114,6 +114,14 @@
               <li v-for="(h, i) in parseHints(selectedQ.hints)" :key="i" style="margin-bottom:4px;">{{ esc(h) }}</li>
             </ul>
           </div>
+
+          <!-- 选择题选项 -->
+          <QuizPanel
+            v-if="selectedQ && selectedQ.id"
+            :question-id="selectedQ.id"
+            :user-id="auth.userId || 'anonymous'"
+          />
+
           <!-- Card Area -->
           <div v-if="card" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;">
             <div style="font-size:14px;font-weight:600;margin-bottom:8px;">知识卡片</div>
@@ -171,6 +179,7 @@ import type { QuestionDto, CardDto, DiscussionDto } from '@/types'
 import GenerateModal from '@/components/GenerateModal.vue'
 import ImportModal from '@/components/ImportModal.vue'
 import BatchImportModal from '@/components/BatchImportModal.vue'
+import QuizPanel from '@/components/QuizPanel.vue'
 
 const store = useQuestionsStore()
 const auth = useAuthStore()

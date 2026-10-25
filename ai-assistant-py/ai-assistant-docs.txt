@@ -1,0 +1,54 @@
+# Cortex Lab AI 助手（Java Spring Boot 版）
+
+## 一、架构总览
+
+Vue3 前端 → SSE → Spring Boot (AssistantService) → LLM API (DeepSeek/OpenAI)
+            ↕ HTTP
+     PlatformFeatureService (30+ 功能调度)
+            ↕
+     MySQL 数据库 + MyBatis-Plus
+
+## 二、核心组件
+
+| 文件 | 职责 |
+|------|------|
+| AssistantService.java | 对话管理、上下文构建、响应解析、动作分发 |
+| LlmClient.java | LLM API 调用封装（流式/非流式） |
+| PlatformFeatureService.java | 30+ 平台功能注册与调度 |
+| LlmConfigResolver.java | 配置统一入口（DB > yml > 默认值） |
+| GlobalChat.vue | 前端 SSE 流式聊天组件 |
+| PracticeView.vue | 前端动作执行器（加载代码/运行/跳转） |
+
+## 三、AI 可执行操作
+
+编辑器: loadToEditor / modifyCode / insertCode / deleteCode / runCode / resetCode
+导航: switchTab / loadQuestion / generateScenario / getKnowledgeTree
+功能: searchTraps, getTrap, submitTrap, voteTrap,
+     getLearningReport, getLearningStats, getReportNarrative,
+     getDiscussions, addDiscussion, tutorAssess, getUserProfile,
+     listScenarios, generateScenarioFromKnowledge,
+     searchQuestions, getQuestion, generateQuestion, createQuestion,
+     getReviewList, submitReview,
+     getKnowledgeTree, toggleNodeMastered,
+     listCards, generateCard, deleteCard
+
+## 四、数据库表
+
+assistant_config - AI 助手配置 (config_key / config_value)
+assistant_conversation - 对话元数据
+assistant_message - 每条消息记录
+
+## 五、关键文件路径
+
+Backend:
+  src/main/java/com/cortex/lab/service/AssistantService.java
+  src/main/java/com/cortex/lab/service/PlatformFeatureService.java
+  src/main/java/com/cortex/llm/LlmClient.java
+  src/main/java/com/cortex/config/LlmConfigResolver.java
+  src/main/java/com/cortex/lab/controller/LabController.java
+
+Frontend:
+  lab-frontend/src/components/GlobalChat.vue
+  lab-frontend/src/components/ConfigPanel.vue
+  lab-frontend/src/views/PracticeView.vue
+  lab-frontend/src/composables/useSSE.ts
